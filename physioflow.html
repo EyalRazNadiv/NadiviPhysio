@@ -1,1986 +1,289 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#020617" />
-  <meta name="apple-mobile-web-app-title" content="PhysioFlow" />
-  <title>PhysioFlow</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-          },
-          animation: {
-            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-          }
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Protocol 211 — Physiotherapy Interval Timer</title> <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono for high-legibility tabular countdowns -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBr ains+Mono:wght@600;700;800&display=swap"
+        rel="stylesheet" />
+    <script>     tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'], }, colors: { obsidian: '#080c14', surface: '#101726', card: '#151e31', borderSubtle: '#22304a', } } } };   </script>
+    <style>
+        /* Base floor-mat friendly styling and smooth transitions */
+        body {
+            background-color: #080c14;
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
         }
-      }
-    };
-  </script>
-  <style>
-    /* Custom scrollbar for dark slate theme */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(15, 23, 42, 0.6);
-      border-radius: 9999px;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(71, 85, 105, 0.7);
-      border-radius: 9999px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(100, 116, 139, 0.9);
-    }
 
-    /* Enforce strict tabular numbers for jitter-free countdown */
-    .tabular-clock {
-      font-variant-numeric: tabular-nums;
-      font-feature-settings: "tnum" 1, "zero" 1;
-    }
+        /* Tabular numbers prevent jitter during rapid millisecond countdowns */
+        .tabular-clock {
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum";
+        }
 
-    /* Smooth SVG ring transitions */
-    .progress-ring-circle {
-      transition: stroke 0.35s ease;
-      transform: rotate(-90deg);
-      transform-origin: 50% 50%;
-    }
+        /* Smooth circular progress stroke transitions */
+        .progress-ring-circle {
+            transition: stroke 0.35s ease;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
 
-    /* Subtle pulse on last 3 seconds */
-    @keyframes tickPop {
-      0% { transform: scale(1); }
-      35% { transform: scale(1.045); }
-      100% { transform: scale(1); }
-    }
-    .tick-pop {
-      animation: tickPop 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-  </style>
+        /* Custom subtle scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #080c14;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #22304a;
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #33476b;
+        }
+
+        /* Pulse animation for active Wake Lock badge */
+        @keyframes softPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.45;
+                transform: scale(0.85);
+            }
+        }
+
+        .wake-dot-active {
+            animation: softPulse 2.2s infinite ease-in-out;
+        }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-50 font-sans antialiased min-h-screen selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden">
 
-  <!-- Toast Notification Container (Replaces alert/confirm) -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
-
-  <!-- App Shell -->
-  <div class="min-h-screen flex flex-col max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-5 gap-4">
-
-    <!-- Top Header & Audio/WakeLock Controls -->
-    <header class="bg-slate-900/90 border border-slate-800/90 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg backdrop-blur-md">
-      <!-- Brand & Total Duration -->
-      <div class="flex items-center gap-3">
-        <div id="brand-icon-box" class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 transition-colors duration-300">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
-          </svg>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white">PhysioFlow Timer</h1>
-            <span id="header-total-badge" class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">42:45</span>
-          </div>
-          <p class="text-xs text-slate-400 hidden sm:block">High-Contrast Rehabilitation & Mobility Interval Engine</p>
-        </div>
-      </div>
-
-      <!-- Status Badges & Toggles -->
-      <div class="flex flex-wrap items-center gap-2 sm:gap-2.5 ml-auto">
-        <!-- Wake Lock Status Badge -->
-        <div id="wakelock-badge" title="Screen Wake Lock prevents your screen from sleeping while the timer runs" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-slate-400 transition-colors">
-          <span id="wakelock-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
-          <span id="wakelock-text">Screen Auto-Lock</span>
-        </div>
-
-        <!-- Sound Cues Toggle -->
-        <button id="toggle-sound-btn" type="button" aria-pressed="true" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25">
-          <svg id="sound-icon-on" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          </svg>
-          <svg id="sound-icon-off" class="w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-          </svg>
-          <span>Sound</span>
-        </button>
-
-        <!-- Voice Announcements Toggle -->
-        <button id="toggle-voice-btn" type="button" aria-pressed="true" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-sky-500/15 border-sky-500/40 text-sky-300 hover:bg-sky-500/25">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-          <span>Voice</span>
-        </button>
-
-        <!-- Test Audio Button -->
-        <button id="test-sound-btn" type="button" title="Test audio chimes and voice announcement" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all active:scale-95">
-          <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-          </svg>
-          <span class="hidden sm:inline">Test Audio</span>
-        </button>
-
-        <!-- Edit Routine Button -->
-        <button id="open-editor-btn" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-600/80 transition-all active:scale-95">
-          <svg class="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-          <span>Edit Routine</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Main Two-Column Responsive Workspace -->
-    <main class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 flex-1 items-start">
-
-      <!-- LEFT / PRIMARY COLUMN: Active Timer Card -->
-      <section id="timer-card" class="lg:col-span-7 bg-slate-900 border-2 border-emerald-500/40 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden">
-
-        <!-- Ambient Phase Glow Backdrop -->
-        <div id="phase-glow" class="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-emerald-500/10 blur-3xl transition-colors duration-500"></div>
-
-        <!-- Top Phase Banner & Exercise Counter -->
-        <div class="flex flex-wrap items-center justify-between gap-2 relative z-10">
-          <div class="flex items-center gap-2.5">
-            <span id="phase-pill" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-              <span id="phase-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <span id="phase-label">READY — WORK</span>
-            </span>
-            <span id="paused-pill" class="hidden px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-600">
-              PAUSED
-            </span>
-          </div>
-
-          <div class="text-xs sm:text-sm font-bold text-slate-300 bg-slate-800/90 border border-slate-700/80 px-3 py-1.5 rounded-full">
-            Exercise <span id="exercise-index-text" class="text-white">1</span> of <span id="exercise-total-text">11</span>
-          </div>
-        </div>
-
-        <!-- Main Exercise Title, Set Indicator, or Transition Callout -->
-        <div class="mt-5 sm:mt-6 text-center relative z-10">
-          <!-- Primary Headline (Exercise Name or Rest Headline) -->
-          <h2 id="main-headline" class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
-            Scorpion
-          </h2>
-
-          <!-- Sub-headline / Set Progress / Transition Callout -->
-          <div id="sub-headline-container" class="mt-2.5 flex flex-col items-center justify-center gap-2">
-            <p id="sub-headline" class="text-lg sm:text-xl font-bold text-emerald-300">
-              Set 1 of 4
-            </p>
-            <!-- Visual Set Pips -->
-            <div id="set-pips-container" class="flex items-center justify-center gap-1.5 mt-0.5" aria-label="Set progress indicators">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
-
-          <!-- Prominent Transition Banner (Shown during 30s TRANSITION_REST) -->
-          <div id="transition-callout" class="hidden mt-3 mx-auto max-w-lg rounded-2xl bg-amber-500/15 border-2 border-amber-400/50 px-4 py-3 text-center">
-            <div id="transition-callout-label" class="text-xs font-extrabold uppercase tracking-widest text-amber-300">Transition Rest — Next Exercise</div>
-            <div id="transition-next-name" class="text-xl sm:text-2xl font-black text-white mt-0.5">Couch Stretch</div>
-            <div id="transition-next-meta" class="text-xs sm:text-sm font-medium text-amber-200/90 mt-0.5">4 sets × 60s work · 15s rest</div>
-          </div>
-        </div>
-
-        <!-- Central Circular Progress Ring & High-Contrast Countdown Clock -->
-        <div class="my-5 sm:my-6 flex items-center justify-center relative z-10">
-          <div class="relative w-64 h-64 sm:w-72 sm:h-72 md:w-80 md:h-80 flex items-center justify-center">
-            <svg class="w-full h-full" viewBox="0 0 260 260">
-              <!-- Track Ring -->
-              <circle
-                cx="130"
-                cy="130"
-                r="114"
-                fill="none"
-                stroke="rgba(30, 41, 59, 0.9)"
-                stroke-width="14"
-              />
-              <!-- Active Progress Ring -->
-              <circle
-                id="progress-ring"
-                class="progress-ring-circle"
-                cx="130"
-                cy="130"
-                r="114"
-                fill="none"
-                stroke="#10b981"
-                stroke-width="14"
-                stroke-linecap="round"
-                stroke-dasharray="716.28"
-                stroke-dashoffset="0"
-              />
-            </svg>
-
-            <!-- Center Digital Time Readout -->
-            <div class="absolute inset-0 flex flex-col items-center justify-center select-none">
-              <div id="countdown-display" class="font-mono tabular-clock text-6xl sm:text-7xl md:text-[5.25rem] font-extrabold tracking-tight text-white leading-none">
-                01:00
-              </div>
-              <div id="step-duration-sub" class="mt-2 text-xs sm:text-sm font-semibold text-slate-400 tracking-wide uppercase">
-                of 01:00 interval
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Up Next Preview Pill -->
-        <div id="up-next-bar" class="mx-auto w-full max-w-lg rounded-2xl bg-slate-800/85 border border-slate-700/80 px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm relative z-10">
-          <span class="font-bold uppercase tracking-wider text-slate-400 shrink-0">Up Next</span>
-          <span id="up-next-text" class="font-semibold text-slate-100 truncate text-right">15s Set Rest</span>
-        </div>
-
-        <!-- Primary Playback & Time Adjust Controls -->
-        <div class="mt-5 sm:mt-6 flex flex-col gap-3 relative z-10">
-          <!-- Main Action Row: Prev | Start/Pause | Next -->
-          <div class="grid grid-cols-12 gap-2.5 sm:gap-3">
-            <button id="prev-step-btn" type="button" title="Previous interval" class="col-span-3 min-h-[56px] rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] border border-slate-700 text-slate-200 font-bold flex flex-col items-center justify-center gap-0.5 transition-all">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-              <span class="text-[11px] uppercase tracking-wider">Prev</span>
-            </button>
-
-            <button id="start-pause-btn" type="button" class="col-span-6 min-h-[56px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-black text-lg sm:text-xl tracking-wide shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2.5 transition-all">
-              <svg id="play-icon" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
-              <svg id="pause-icon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zm7 0a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" clip-rule="evenodd" />
-              </svg>
-              <span id="start-pause-label">Start Routine</span>
-            </button>
-
-            <button id="next-step-btn" type="button" title="Next interval" class="col-span-3 min-h-[56px] rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] border border-slate-700 text-slate-200 font-bold flex flex-col items-center justify-center gap-0.5 transition-all">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-              </svg>
-              <span class="text-[11px] uppercase tracking-wider">Next</span>
-            </button>
-          </div>
-
-          <!-- Secondary Row: -10s | Reset | +10s -->
-          <div class="grid grid-cols-3 gap-2.5 sm:gap-3">
-            <button id="minus-10-btn" type="button" class="min-h-[44px] rounded-xl bg-slate-800/80 hover:bg-slate-700/90 active:scale-[0.98] border border-slate-700/80 text-slate-300 hover:text-white font-mono text-xs sm:text-sm font-bold transition-all">
-              -10s
-            </button>
-
-            <button id="reset-btn" type="button" class="min-h-[44px] rounded-xl bg-slate-800/80 hover:bg-rose-950/70 active:scale-[0.98] border border-slate-700/80 hover:border-rose-500/50 text-slate-300 hover:text-rose-200 text-xs sm:text-sm font-bold transition-all">
-              Reset Routine
-            </button>
-
-            <button id="plus-10-btn" type="button" class="min-h-[44px] rounded-xl bg-slate-800/80 hover:bg-slate-700/90 active:scale-[0.98] border border-slate-700/80 text-slate-300 hover:text-white font-mono text-xs sm:text-sm font-bold transition-all">
-              +10s
-            </button>
-          </div>
-        </div>
-
-        <!-- Overall Session Progress Bar -->
-        <div class="mt-5 pt-4 border-t border-slate-800/90 relative z-10">
-          <div class="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
-            <span>Elapsed: <strong id="elapsed-time-text" class="font-mono text-slate-200">00:00</strong></span>
-            <span id="overall-percent-text" class="font-mono text-slate-300">0%</span>
-            <span>Remaining: <strong id="remaining-time-text" class="font-mono text-slate-200">42:45</strong></span>
-          </div>
-          <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/70">
-            <div id="overall-progress-bar" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-sky-400 to-amber-400 transition-all duration-200" style="width: 0%"></div>
-          </div>
-          <p class="text-[11px] text-slate-500 mt-2 text-center hidden sm:block">
-            Tip: Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono">Space</kbd> to Start/Pause · Click any exercise on the right to jump directly to it
-          </p>
-        </div>
-      </section>
-
-      <!-- RIGHT / SECONDARY COLUMN: Interactive Routine Timeline -->
-      <aside class="lg:col-span-5 bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col max-h-[calc(100vh-7.5rem)]">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800 shrink-0">
-          <div>
-            <h3 class="text-base sm:text-lg font-extrabold text-white">Routine Sequence</h3>
-            <p class="text-xs text-slate-400">Tap any exercise to jump to Set 1</p>
-          </div>
-          <span id="completed-count-badge" class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-            0 / 11 Done
-          </span>
-        </div>
-
-        <!-- Scrollable Exercise List -->
-        <div id="routine-list-container" class="flex-1 overflow-y-auto pr-1 space-y-2">
-          <!-- Exercise items injected dynamically -->
-        </div>
-      </aside>
-
-    </main>
-  </div>
-
-  <!-- EDIT ROUTINE MODAL -->
-  <div id="editor-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3 sm:p-5 overflow-y-auto">
-    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
-
-      <!-- Modal Header -->
-      <div class="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-900">
-        <div>
-          <h2 class="text-lg sm:text-xl font-black text-white">Edit Physiotherapy Routine</h2>
-          <p class="text-xs text-slate-400">Customize exercises, sets, work/rest intervals, or import/export JSON</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="text-xs font-semibold text-slate-400">
-            New Total: <strong id="editor-total-duration" class="font-mono text-emerald-400 text-sm">42:45</strong>
-          </span>
-          <button id="close-editor-btn" type="button" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors" aria-label="Close modal">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Modal Toolbar: Add / Import / Export / Reset Default -->
-      <div class="px-5 py-3 bg-slate-800/50 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
-        <button id="add-exercise-btn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all active:scale-95">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          <span>Add Exercise</span>
-        </button>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="export-json-btn" type="button" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors">
-            Export JSON
-          </button>
-          <button id="toggle-import-btn" type="button" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors">
-            Import JSON
-          </button>
-          <button id="reset-default-routine-btn" type="button" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/70 border border-slate-700 hover:border-amber-500/50 text-amber-300 font-semibold text-xs transition-colors">
-            Restore Default (11)
-          </button>
-        </div>
-      </div>
-
-      <!-- Collapsible JSON Import Drawer -->
-      <div id="import-drawer" class="hidden px-5 py-3 bg-slate-950/90 border-b border-slate-800 space-y-2">
-        <div class="flex items-center justify-between">
-          <label for="import-json-textarea" class="text-xs font-bold text-slate-300">Paste Routine JSON or upload a .json file:</label>
-          <label class="cursor-pointer text-xs font-semibold text-sky-400 hover:text-sky-300 underline">
-            Choose File
-            <input id="import-json-file" type="file" accept=".json,application/json" class="hidden" />
-          </label>
-        </div>
-        <textarea id="import-json-textarea" rows="3" placeholder='[{"name":"Scorpion","sets":4,"workSec":60,"setRestSec":15,"transitionRestSec":30}]' class="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500"></textarea>
-        <div class="flex justify-end gap-2">
-          <button id="cancel-import-btn" type="button" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
-          <button id="apply-import-btn" type="button" class="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold">Load JSON into Editor</button>
-        </div>
-      </div>
-
-      <!-- Scrollable Exercise Editor Rows -->
-      <div id="editor-rows-container" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
-        <!-- Editor exercise cards rendered dynamically -->
-      </div>
-
-      <!-- Modal Footer -->
-      <div class="px-5 py-4 border-t border-slate-800 bg-slate-900 flex items-center justify-end gap-3">
-        <button id="cancel-editor-btn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm transition-colors">
-          Cancel
-        </button>
-        <button id="save-routine-btn" type="button" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95">
-          Save & Apply Routine
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    /**
-     * ============================================================================
-     * 1. DEFAULT PRELOADED PHYSIOTHERAPY ROUTINE (EXACT 42:45 / 2565s SEQUENCE)
-     * ============================================================================
-     */
-    const STORAGE_KEY = 'physioflow_routine_v1';
-    const PREFS_KEY = 'physioflow_prefs_v1';
-
-    const DEFAULT_ROUTINE = [
-      { id: 'ex-1',  name: 'Scorpion',                   sets: 4, workSec: 60,  setRestSec: 15, transitionRestSec: 30 },
-      { id: 'ex-2',  name: 'Couch Stretch',              sets: 4, workSec: 60,  setRestSec: 15, transitionRestSec: 30 },
-      { id: 'ex-3',  name: 'Tuck Hold',                  sets: 3, workSec: 30,  setRestSec: 15, transitionRestSec: 30 },
-      { id: 'ex-4',  name: 'Pigeon Stretch',             sets: 4, workSec: 60,  setRestSec: 15, transitionRestSec: 30 },
-      { id: 'ex-5',  name: 'Bretzel',                    sets: 6, workSec: 10,  setRestSec: 7,  transitionRestSec: 30 },
-      { id: 'ex-6',  name: 'Hamstring Flossing',         sets: 1, workSec: 120, setRestSec: 0,  transitionRestSec: 30 },
-      { id: 'ex-7',  name: 'Seated Nerve Glide',         sets: 1, workSec: 240, setRestSec: 0,  transitionRestSec: 30 },
-      { id: 'ex-8',  name: 'Supine KB for Iliopsoas',    sets: 2, workSec: 60,  setRestSec: 20, transitionRestSec: 30 },
-      { id: 'ex-9',  name: 'Bird Dog',                   sets: 3, workSec: 30,  setRestSec: 10, transitionRestSec: 30 },
-      { id: 'ex-10', name: 'QL Stretch',                 sets: 4, workSec: 60,  setRestSec: 15, transitionRestSec: 30 },
-      { id: 'ex-11', name: 'Wall Half Kneeling Rotation',sets: 1, workSec: 300, setRestSec: 0,  transitionRestSec: 0  }
-    ];
-
-    /**
-     * ============================================================================
-     * 2. AUDIO & VOICE ENGINE (ZERO EXTERNAL ASSETS)
-     * ============================================================================
-     */
-    class SoundAndVoiceEngine {
-      constructor() {
-        this.ctx = null;
-        this.soundEnabled = true;
-        this.voiceEnabled = true;
-        this.preferredVoice = null;
-        this.speechPrimed = false;
-        this.currentUtterance = null; // keep a reference: Chrome drops un-referenced utterances
-        this.speakTimer = null;
-
-        if ('speechSynthesis' in window) {
-          this.loadVoices();
-          if (typeof window.speechSynthesis.addEventListener === 'function') {
-            window.speechSynthesis.addEventListener('voiceschanged', () => this.loadVoices());
-          } else {
-            window.speechSynthesis.onvoiceschanged = () => this.loadVoices();
-          }
-        }
-      }
-
-      loadVoices() {
-        if (!('speechSynthesis' in window)) return;
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          const en = voices.filter(v => /^en/i.test(v.lang));
-          this.preferredVoice =
-            en.find(v => /Google US English|Samantha|Natural|Google UK English Female|Daniel|Karen/i.test(v.name)) ||
-            en.find(v => v.localService) ||
-            en[0] ||
-            null; // null = let the browser pick its default voice
-        }
-      }
-
-      // Must be called from a user tap: browsers (especially iOS Safari) only allow
-      // audio and speech after the page has made a sound inside a user gesture.
-      unlock() {
-        try {
-          if (!this.ctx) {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) {
-              this.ctx = new AudioCtx();
-            }
-          }
-          if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume();
-          }
-        } catch (err) {
-          // AudioContext blocked until interaction
-        }
-
-        if ('speechSynthesis' in window) {
-          try {
-            window.speechSynthesis.resume();
-            if (!this.speechPrimed) {
-              this.speechPrimed = true;
-              const primer = new SpeechSynthesisUtterance(' ');
-              primer.volume = 0;
-              this.currentUtterance = primer;
-              window.speechSynthesis.speak(primer);
-            }
-          } catch (err) {
-            // ignore
-          }
-        }
-      }
-
-      playTone({ freq = 440, type = 'sine', duration = 0.15, gain = 0.25, delay = 0 }) {
-        if (!this.soundEnabled) return;
-        if (!this.ctx) return;
-        if (this.ctx.state === 'suspended') {
-          try { this.ctx.resume(); } catch (err) { /* ignore */ }
-        }
-
-        try {
-          const now = this.ctx.currentTime + delay;
-          const osc = this.ctx.createOscillator();
-          const gainNode = this.ctx.createGain();
-
-          osc.type = type;
-          osc.frequency.setValueAtTime(freq, now);
-
-          gainNode.gain.setValueAtTime(0.0001, now);
-          gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.015);
-          gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-          osc.connect(gainNode);
-          gainNode.connect(this.ctx.destination);
-
-          osc.start(now);
-          osc.stop(now + duration + 0.02);
-        } catch (err) {
-          // Ignore synthesis errors
-        }
-      }
-
-      playTick(secRemaining) {
-        const freq = secRemaining === 1 ? 660 : 520;
-        this.playTone({ freq, type: 'sine', duration: 0.09, gain: 0.16 });
-      }
-
-      playWorkStart() {
-        this.playTone({ freq: 523.25, type: 'triangle', duration: 0.16, gain: 0.28, delay: 0 });
-        this.playTone({ freq: 783.99, type: 'triangle', duration: 0.26, gain: 0.30, delay: 0.11 });
-      }
-
-      playSetRestStart() {
-        this.playTone({ freq: 587.33, type: 'sine', duration: 0.16, gain: 0.22, delay: 0 });
-        this.playTone({ freq: 440.00, type: 'sine', duration: 0.24, gain: 0.22, delay: 0.12 });
-      }
-
-      playTransitionStart() {
-        this.playTone({ freq: 440.00, type: 'triangle', duration: 0.14, gain: 0.26, delay: 0 });
-        this.playTone({ freq: 554.37, type: 'triangle', duration: 0.14, gain: 0.26, delay: 0.12 });
-        this.playTone({ freq: 659.25, type: 'triangle', duration: 0.28, gain: 0.28, delay: 0.24 });
-      }
-
-      playComplete() {
-        this.playTone({ freq: 523.25, type: 'triangle', duration: 0.18, gain: 0.28, delay: 0 });
-        this.playTone({ freq: 659.25, type: 'triangle', duration: 0.18, gain: 0.28, delay: 0.14 });
-        this.playTone({ freq: 783.99, type: 'triangle', duration: 0.18, gain: 0.28, delay: 0.28 });
-        this.playTone({ freq: 1046.50, type: 'triangle', duration: 0.45, gain: 0.32, delay: 0.42 });
-      }
-
-      speak(text, rate = 1.0) {
-        if (!this.voiceEnabled || !('speechSynthesis' in window)) return;
-        const synth = window.speechSynthesis;
-        try {
-          clearTimeout(this.speakTimer);
-          const utterance = new SpeechSynthesisUtterance(text);
-          if (this.preferredVoice) {
-            utterance.voice = this.preferredVoice;
-            utterance.lang = this.preferredVoice.lang;
-          } else {
-            utterance.lang = 'en-US';
-          }
-          utterance.rate = rate;
-          utterance.pitch = 1.0;
-          utterance.volume = 1.0;
-          this.currentUtterance = utterance;
-
-          if (synth.speaking || synth.pending) {
-            // Calling speak() right after cancel() is silently dropped by Chrome,
-            // so give the engine a moment to settle before queuing the new phrase.
-            synth.cancel();
-            this.speakTimer = setTimeout(() => {
-              synth.resume();
-              synth.speak(utterance);
-            }, 80);
-          } else {
-            synth.resume();
-            synth.speak(utterance);
-          }
-        } catch (err) {
-          // Ignore speech synthesis errors
-        }
-      }
-
-      stopSpeaking() {
-        clearTimeout(this.speakTimer);
-        if ('speechSynthesis' in window) {
-          try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
-        }
-      }
-
-      // Spoken "3, 2, 1" at the end of every interval, together with the tick
-      countdown(sec) {
-        this.playTick(sec);
-        this.speak(String(sec), 1.1);
-      }
-
-      announceStep(step, { natural = false, allSteps = null } = {}) {
-        if (!step) return;
-        // "natural" = the previous interval just ran out (vs. a manual skip/jump)
-        if (step.type === 'PREP') {
-          this.playTransitionStart();
-          const setsPhrase = step.totalSets > 1 ? `, ${step.totalSets} sets` : '';
-          this.speak(`Get ready. First exercise: ${step.nextExerciseName}${setsPhrase}.`);
-        } else if (step.type === 'WORK') {
-          this.playWorkStart();
-          const setPhrase = step.totalSets > 1 ? `, set ${step.setNumber} of ${step.totalSets}` : '';
-          this.speak(`Go! ${step.exerciseName}${setPhrase}.`);
-        } else if (step.type === 'SET_REST') {
-          this.playSetRestStart();
-          this.speak(`${natural ? 'Stop. ' : ''}Rest ${Math.round(step.duration)} seconds. Next: set ${step.setNumber} of ${step.totalSets}.`);
-        } else if (step.type === 'TRANSITION_REST') {
-          this.playTransitionStart();
-          this.speak(`${natural ? 'Stop. ' : ''}Rest ${Math.round(step.duration)} seconds. Next exercise: ${step.nextExerciseName}.`);
-        }
-      }
-
-      announceTenSecondsLeft() {
-        this.speak('10 seconds left.');
-      }
-
-      announceComplete() {
-        this.playComplete();
-        this.speak('Stop. Routine complete. Great work on your physiotherapy session!');
-      }
-
-      testAudio() {
-        this.unlock();
-        this.playWorkStart();
-        if (this.voiceEnabled) {
-          this.speak('Audio and voice cues ready. Go!');
-        }
-      }
-    }
-
-    /**
-     * ============================================================================
-     * 3. SCREEN WAKE LOCK MANAGER
-     * ============================================================================
-     */
-    // A tiny silent looping video. Playing video keeps the screen on in browsers
-    // where the Wake Lock API is missing (iOS < 16.4), blocked (embedded iframes)
-    // or unreliable (iOS home-screen apps before 18.4).
-    const KEEP_AWAKE_VIDEO = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAYYbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAD6AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAml0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAD6AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAA+gAAAAAAABAAAAAAHhbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAABAABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABjG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAUxzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAK/+EAFmdCwArZHsBEAAADAAQAAAMACDxImSABAAVoy4PEyAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAVSAAAFUgAAABhzdHRzAAAAAAAAAAEAAAAEAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAQAAACRzdHN6AAAAAAAAAAAAAAAEAAACiQAAAAsAAAALAAAACgAAACBzdGNvAAAAAAAAAAQAAAZdAAAJBgAACTEAAAlcAAAC2XRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAIAAAAAAAAPoAAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAD6AAAAQAAAEAAAAAAlFtZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAB9AAACBAFXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAH8bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAHAc3RibAAAAH5zdHNkAAAAAAAAAAEAAABubXA0YQAAAAAAAAABAAAAAAAAAAAAAQAQAAAAAB9AAAAAAAA2ZXNkcwAAAAADgICAJQACAASAgIAXQBUAAAAAAB9AAAABIAWAgIAFFYhW5QAGgICAAQIAAAAUYnRydAAAAAAAAB9AAAABIAAAACBzdHRzAAAAAAAAAAIAAAAgAAAEAAAAAAEAAAEAAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAIAAAAAQAAAJhzdHN6AAAAAAAAAAAAAAAhAAAAFQAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAJHN0Y28AAAAAAAAABQAABkgAAAjmAAAJEQAACTwAAAlmAAAAGnNncGQBAAAAcm9sbAAAAAIAAAAB//8AAAAcc2JncAAAAAByb2xsAAAAAQAAACEAAAABAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY2MC4xNi4xMDAAAAAIZnJlZQAAA0ZtZGF03gIATGF2YzYwLjMxLjEwMgACMEAOAAACcgYF//9u3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwOCAzMWUxOWY5IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTMgZGVibG9jaz0xOi0zOi0zIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0yLjAwOjAuNzAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS00IHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD0yNTAga2V5aW50X21pbj0xIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4yMACAAAAAD2WIhAXzn///D0UAAVefgAEYIAcBGCAHARggBwEYIAcBGCAHARggBwEYIAcBGCAHAAAAB0GaOAvnOoABGCAHARggBwEYIAcBGCAHARggBwEYIAcBGCAHARggBwAAAAdBmlQC+c6gARggBwEYIAcBGCAHARggBwEYIAcBGCAHARggBwEYIAcAAAAGQZpgF851ARggBwEYIAcBGCAHARggBwEYIAcBGCAHARggBwEYIAc=';
-
-    class WakeLockManager {
-      constructor(onStatusChange) {
-        this.sentinel = null;
-        this.shouldBeActive = false;
-        this.onStatusChange = onStatusChange;
-        this.video = null;
-        this.usingVideo = false;
-        this.requesting = false;
-
-        const reacquire = () => {
-          if (document.visibilityState === 'visible' && this.shouldBeActive) {
-            this.request();
-          }
-        };
-        document.addEventListener('visibilitychange', reacquire);
-        window.addEventListener('pageshow', reacquire);
-        window.addEventListener('focus', reacquire);
-      }
-
-      get isIOSHomeScreenApp() {
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        return isIOS && (navigator.standalone === true ||
-          window.matchMedia('(display-mode: standalone)').matches);
-      }
-
-      ensureVideo() {
-        if (this.video) return this.video;
-        const v = document.createElement('video');
-        v.setAttribute('playsinline', '');
-        v.setAttribute('webkit-playsinline', '');
-        v.setAttribute('muted', '');
-        v.setAttribute('aria-hidden', 'true');
-        v.muted = true;
-        v.loop = true;
-        v.src = KEEP_AWAKE_VIDEO;
-        v.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
-        document.body.appendChild(v);
-        this.video = v;
-        return v;
-      }
-
-      async startVideo() {
-        try {
-          const v = this.ensureVideo();
-          await v.play();
-          this.usingVideo = true;
-          return true;
-        } catch (err) {
-          return false;
-        }
-      }
-
-      stopVideo() {
-        if (this.video) {
-          try { this.video.pause(); } catch (err) { /* ignore */ }
-        }
-        this.usingVideo = false;
-      }
-
-      // Call from a tap handler the first time (video playback needs a user gesture)
-      async request() {
-        this.shouldBeActive = true;
-        if (this.requesting) return;
-        this.requesting = true;
-
-        let locked = false;
-        if ('wakeLock' in navigator && !(this.sentinel && !this.sentinel.released)) {
-          try {
-            this.sentinel = await navigator.wakeLock.request('screen');
-            locked = true;
-            this.sentinel.addEventListener('release', () => {
-              this.sentinel = null;
-              // The OS can drop the lock (e.g. battery saver); try again while visible
-              if (this.shouldBeActive && document.visibilityState === 'visible') {
-                setTimeout(() => this.request(), 500);
-              } else if (!this.shouldBeActive) {
-                this.onStatusChange('inactive');
-              }
-            });
-          } catch (err) {
-            locked = false;
-          }
-        } else if (this.sentinel && !this.sentinel.released) {
-          locked = true;
-        }
-
-        let videoOk = false;
-        if (!locked || this.isIOSHomeScreenApp) {
-          videoOk = await this.startVideo();
-        }
-
-        this.requesting = false;
-        if (!this.shouldBeActive) {
-          // release() was called while we were waiting
-          this.release();
-          return;
-        }
-        this.onStatusChange(locked || videoOk ? 'active' : 'unsupported');
-      }
-
-      async release() {
-        this.shouldBeActive = false;
-        this.stopVideo();
-        if (this.sentinel) {
-          const s = this.sentinel;
-          this.sentinel = null;
-          try {
-            await s.release();
-          } catch (err) {
-            // Ignore release errors
-          }
-        }
-        this.onStatusChange('inactive');
-      }
-    }
-
-    /**
-     * ============================================================================
-     * 4. TIMELINE COMPILER & FORMATTERS
-     * ============================================================================
-     */
-    function formatMMSS(totalSeconds) {
-      const clamped = Math.max(0, Math.ceil(totalSeconds));
-      const mins = Math.floor(clamped / 60);
-      const secs = clamped % 60;
-      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-
-    function calculateExerciseDuration(ex, isLastExercise) {
-      const sets = Math.max(1, Number(ex.sets) || 1);
-      const workSec = Math.max(1, Number(ex.workSec) || 1);
-      const setRestSec = Math.max(0, Number(ex.setRestSec) || 0);
-      const transitionRestSec = isLastExercise ? 0 : Math.max(0, Number(ex.transitionRestSec) || 0);
-      return (sets * workSec) + ((sets - 1) * setRestSec) + transitionRestSec;
-    }
-
-    const PREP_SECONDS = 10;
-
-    function buildTimeline(exercises) {
-      const steps = [];
-      let cumulativeOffset = 0;
-
-      // Lead-in so there is time to get into position before the first "Go!"
-      if (exercises.length > 0 && PREP_SECONDS > 0) {
-        const first = exercises[0];
-        const fSets = Math.max(1, Number(first.sets) || 1);
-        const fWork = Math.max(1, Number(first.workSec) || 1);
-        const fRest = Math.max(0, Number(first.setRestSec) || 0);
-        const fMeta = fSets > 1
-          ? `${fSets} sets × ${fWork}s work · ${fRest}s rest`
-          : `1 set × ${formatMMSS(fWork)} continuous work`;
-        steps.push({
-          index: 0,
-          type: 'PREP',
-          duration: PREP_SECONDS,
-          originalDuration: PREP_SECONDS,
-          exerciseIndex: 0,
-          exerciseName: first.name,
-          setNumber: 1,
-          totalSets: fSets,
-          nextExerciseName: first.name,
-          nextExerciseMeta: fMeta,
-          upNextLabel: `Set 1 of ${fSets}: ${first.name} (${formatMMSS(fWork)})`,
-          startOffset: 0
-        });
-        cumulativeOffset += PREP_SECONDS;
-      }
-
-      exercises.forEach((ex, exIdx) => {
-        const isLastExercise = exIdx === exercises.length - 1;
-        const nextEx = !isLastExercise ? exercises[exIdx + 1] : null;
-        const sets = Math.max(1, Number(ex.sets) || 1);
-        const workSec = Math.max(1, Number(ex.workSec) || 1);
-        const setRestSec = Math.max(0, Number(ex.setRestSec) || 0);
-        const transitionRestSec = !isLastExercise ? Math.max(0, Number(ex.transitionRestSec) || 0) : 0;
-
-        for (let setNum = 1; setNum <= sets; setNum++) {
-          const isLastSetOfExercise = setNum === sets;
-
-          // Determine what comes immediately after this WORK interval
-          let upNextLabel = 'Routine Complete!';
-          if (!isLastSetOfExercise && setRestSec > 0) {
-            upNextLabel = `${setRestSec}s Set Rest (before Set ${setNum + 1} of ${sets})`;
-          } else if (!isLastSetOfExercise && setRestSec === 0) {
-            upNextLabel = `Set ${setNum + 1} of ${sets}: ${ex.name}`;
-          } else if (isLastSetOfExercise && !isLastExercise && transitionRestSec > 0) {
-            upNextLabel = `${transitionRestSec}s Transition → ${nextEx.name}`;
-          } else if (isLastSetOfExercise && !isLastExercise && transitionRestSec === 0) {
-            upNextLabel = `Next Exercise: ${nextEx.name}`;
-          }
-
-          steps.push({
-            index: steps.length,
-            type: 'WORK',
-            duration: workSec,
-            originalDuration: workSec,
-            exerciseIndex: exIdx,
-            exerciseName: ex.name,
-            setNumber: setNum,
-            totalSets: sets,
-            nextExerciseName: nextEx ? nextEx.name : null,
-            upNextLabel,
-            startOffset: cumulativeOffset
-          });
-          cumulativeOffset += workSec;
-
-          // Intra-set rest between work sets
-          if (!isLastSetOfExercise && setRestSec > 0) {
-            steps.push({
-              index: steps.length,
-              type: 'SET_REST',
-              duration: setRestSec,
-              originalDuration: setRestSec,
-              exerciseIndex: exIdx,
-              exerciseName: ex.name,
-              setNumber: setNum + 1, // Upcoming set number
-              totalSets: sets,
-              nextExerciseName: nextEx ? nextEx.name : null,
-              upNextLabel: `Set ${setNum + 1} of ${sets}: ${ex.name} (${formatMMSS(workSec)})`,
-              startOffset: cumulativeOffset
-            });
-            cumulativeOffset += setRestSec;
-          }
-        }
-
-        // Transition rest between exercises
-        if (!isLastExercise && transitionRestSec > 0 && nextEx) {
-          const nextSets = Math.max(1, Number(nextEx.sets) || 1);
-          const nextWork = Math.max(1, Number(nextEx.workSec) || 1);
-          const nextRest = Math.max(0, Number(nextEx.setRestSec) || 0);
-          const nextMeta = nextSets > 1
-            ? `${nextSets} sets × ${nextWork}s work · ${nextRest}s rest`
-            : `1 set × ${formatMMSS(nextWork)} continuous work`;
-
-          steps.push({
-            index: steps.length,
-            type: 'TRANSITION_REST',
-            duration: transitionRestSec,
-            originalDuration: transitionRestSec,
-            exerciseIndex: exIdx,
-            exerciseName: ex.name,
-            setNumber: sets,
-            totalSets: sets,
-            nextExerciseName: nextEx.name,
-            nextExerciseMeta: nextMeta,
-            upNextLabel: `${nextEx.name} (${nextMeta})`,
-            startOffset: cumulativeOffset
-          });
-          cumulativeOffset += transitionRestSec;
-        }
-      });
-
-      return {
-        steps,
-        totalDuration: cumulativeOffset
-      };
-    }
-
-    /**
-     * ============================================================================
-     * 5. APPLICATION STATE & DOM REFERENCES
-     * ============================================================================
-     */
-    const RING_CIRCUMFERENCE = 2 * Math.PI * 114; // r=114 => ~716.283
-
-    const state = {
-      exercises: [],
-      steps: [],
-      totalDuration: 0,
-      currentStepIndex: 0,
-      stepRemainingSec: 0,
-      isRunning: false,
-      isCompleted: false,
-      lastFrameTime: null,
-      lastAnnouncedWholeSec: null,
-      tenSecAnnounced: false,
-      timerId: null,
-      resetConfirmPending: false,
-      resetConfirmTimeout: null,
-      draftExercises: []
-    };
-
-    const audio = new SoundAndVoiceEngine();
-
-    // DOM Elements
-    const dom = {
-      headerTotalBadge: document.getElementById('header-total-badge'),
-      brandIconBox: document.getElementById('brand-icon-box'),
-      wakelockBadge: document.getElementById('wakelock-badge'),
-      wakelockDot: document.getElementById('wakelock-dot'),
-      wakelockText: document.getElementById('wakelock-text'),
-      toggleSoundBtn: document.getElementById('toggle-sound-btn'),
-      soundIconOn: document.getElementById('sound-icon-on'),
-      soundIconOff: document.getElementById('sound-icon-off'),
-      toggleVoiceBtn: document.getElementById('toggle-voice-btn'),
-      testSoundBtn: document.getElementById('test-sound-btn'),
-      openEditorBtn: document.getElementById('open-editor-btn'),
-
-      timerCard: document.getElementById('timer-card'),
-      phaseGlow: document.getElementById('phase-glow'),
-      phasePill: document.getElementById('phase-pill'),
-      phaseDot: document.getElementById('phase-dot'),
-      phaseLabel: document.getElementById('phase-label'),
-      transitionCalloutLabel: document.getElementById('transition-callout-label'),
-      pausedPill: document.getElementById('paused-pill'),
-      exerciseIndexText: document.getElementById('exercise-index-text'),
-      exerciseTotalText: document.getElementById('exercise-total-text'),
-
-      mainHeadline: document.getElementById('main-headline'),
-      subHeadlineContainer: document.getElementById('sub-headline-container'),
-      subHeadline: document.getElementById('sub-headline'),
-      setPipsContainer: document.getElementById('set-pips-container'),
-
-      transitionCallout: document.getElementById('transition-callout'),
-      transitionNextName: document.getElementById('transition-next-name'),
-      transitionNextMeta: document.getElementById('transition-next-meta'),
-
-      progressRing: document.getElementById('progress-ring'),
-      countdownDisplay: document.getElementById('countdown-display'),
-      stepDurationSub: document.getElementById('step-duration-sub'),
-
-      upNextBar: document.getElementById('up-next-bar'),
-      upNextText: document.getElementById('up-next-text'),
-
-      prevStepBtn: document.getElementById('prev-step-btn'),
-      startPauseBtn: document.getElementById('start-pause-btn'),
-      playIcon: document.getElementById('play-icon'),
-      pauseIcon: document.getElementById('pause-icon'),
-      startPauseLabel: document.getElementById('start-pause-label'),
-      nextStepBtn: document.getElementById('next-step-btn'),
-      minus10Btn: document.getElementById('minus-10-btn'),
-      resetBtn: document.getElementById('reset-btn'),
-      plus10Btn: document.getElementById('plus-10-btn'),
-
-      elapsedTimeText: document.getElementById('elapsed-time-text'),
-      overallPercentText: document.getElementById('overall-percent-text'),
-      remainingTimeText: document.getElementById('remaining-time-text'),
-      overallProgressBar: document.getElementById('overall-progress-bar'),
-
-      completedCountBadge: document.getElementById('completed-count-badge'),
-      routineListContainer: document.getElementById('routine-list-container'),
-
-      // Editor Modal DOM
-      editorModal: document.getElementById('editor-modal'),
-      editorTotalDuration: document.getElementById('editor-total-duration'),
-      closeEditorBtn: document.getElementById('close-editor-btn'),
-      cancelEditorBtn: document.getElementById('cancel-editor-btn'),
-      saveRoutineBtn: document.getElementById('save-routine-btn'),
-      addExerciseBtn: document.getElementById('add-exercise-btn'),
-      exportJsonBtn: document.getElementById('export-json-btn'),
-      toggleImportBtn: document.getElementById('toggle-import-btn'),
-      resetDefaultRoutineBtn: document.getElementById('reset-default-routine-btn'),
-      importDrawer: document.getElementById('import-drawer'),
-      importJsonTextarea: document.getElementById('import-json-textarea'),
-      importJsonFile: document.getElementById('import-json-file'),
-      cancelImportBtn: document.getElementById('cancel-import-btn'),
-      applyImportBtn: document.getElementById('apply-import-btn'),
-      editorRowsContainer: document.getElementById('editor-rows-container')
-    };
-
-    /**
-     * ============================================================================
-     * 6. TOAST NOTIFICATION SYSTEM
-     * ============================================================================
-     */
-    function showToast(message, variant = 'info') {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      const styles = {
-        info: 'bg-slate-800 border-slate-600 text-slate-100',
-        success: 'bg-emerald-950/95 border-emerald-500/60 text-emerald-200',
-        warning: 'bg-amber-950/95 border-amber-500/60 text-amber-200',
-        error: 'bg-rose-950/95 border-rose-500/60 text-rose-200'
-      };
-      toast.className = `pointer-events-auto px-4 py-3 rounded-2xl border shadow-xl text-xs sm:text-sm font-semibold transition-all duration-300 translate-y-2 opacity-0 ${styles[variant] || styles.info}`;
-      toast.textContent = message;
-      container.appendChild(toast);
-
-      requestAnimationFrame(() => {
-        toast.classList.remove('translate-y-2', 'opacity-0');
-      });
-
-      setTimeout(() => {
-        toast.classList.add('translate-y-2', 'opacity-0');
-        setTimeout(() => toast.remove(), 300);
-      }, 3200);
-    }
-
-    /**
-     * ============================================================================
-     * 7. WAKE LOCK INITIALIZATION & PREFERENCES PERSISTENCE
-     * ============================================================================
-     */
-    const wakeLock = new WakeLockManager((status) => {
-      if (status === 'active') {
-        dom.wakelockBadge.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-semibold text-emerald-300 transition-colors';
-        dom.wakelockDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-        dom.wakelockText.textContent = 'Screen Awake';
-      } else if (status === 'unsupported') {
-        dom.wakelockBadge.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-slate-500 transition-colors';
-        dom.wakelockDot.className = 'w-2 h-2 rounded-full bg-slate-600';
-        dom.wakelockText.textContent = 'Keep-Awake Unavailable';
-      } else {
-        dom.wakelockBadge.className = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-slate-400 transition-colors';
-        dom.wakelockDot.className = 'w-2 h-2 rounded-full bg-slate-500';
-        dom.wakelockText.textContent = 'Screen Auto-Lock';
-      }
-    });
-
-    function loadPreferences() {
-      try {
-        const raw = localStorage.getItem(PREFS_KEY);
-        if (raw) {
-          const prefs = JSON.parse(raw);
-          audio.soundEnabled = prefs.soundEnabled !== false;
-          audio.voiceEnabled = prefs.voiceEnabled !== false;
-        }
-      } catch (e) {
-        // Fallback to defaults
-      }
-      updateAudioToggleUI();
-    }
-
-    function savePreferences() {
-      try {
-        localStorage.setItem(PREFS_KEY, JSON.stringify({
-          soundEnabled: audio.soundEnabled,
-          voiceEnabled: audio.voiceEnabled
-        }));
-      } catch (e) {
-        // Ignore storage quota issues
-      }
-    }
-
-    function updateAudioToggleUI() {
-      dom.toggleSoundBtn.setAttribute('aria-pressed', String(audio.soundEnabled));
-      if (audio.soundEnabled) {
-        dom.toggleSoundBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25';
-        dom.soundIconOn.classList.remove('hidden');
-        dom.soundIconOff.classList.add('hidden');
-      } else {
-        dom.toggleSoundBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200';
-        dom.soundIconOn.classList.add('hidden');
-        dom.soundIconOff.classList.remove('hidden');
-      }
-
-      dom.toggleVoiceBtn.setAttribute('aria-pressed', String(audio.voiceEnabled));
-      if (audio.voiceEnabled) {
-        dom.toggleVoiceBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-sky-500/15 border-sky-500/40 text-sky-300 hover:bg-sky-500/25';
-      } else {
-        dom.toggleVoiceBtn.className = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all active:scale-95 bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200';
-      }
-    }
-
-    /**
-     * ============================================================================
-     * 8. ROUTINE LOADING & INITIALIZATION
-     * ============================================================================
-     */
-    function loadRoutineFromStorage() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return sanitizeExercises(parsed);
-          }
-        }
-      } catch (err) {
-        // Fallback to default routine
-      }
-      return sanitizeExercises(DEFAULT_ROUTINE);
-    }
-
-    function sanitizeExercises(list) {
-      return list.map((item, idx) => ({
-        id: item.id || `ex-${Date.now()}-${idx}`,
-        name: String(item.name || `Exercise ${idx + 1}`).trim(),
-        sets: Math.min(50, Math.max(1, parseInt(item.sets, 10) || 1)),
-        workSec: Math.min(3600, Math.max(1, parseInt(item.workSec, 10) || 30)),
-        setRestSec: Math.min(1800, Math.max(0, parseInt(item.setRestSec, 10) || 0)),
-        transitionRestSec: Math.min(1800, Math.max(0, parseInt(item.transitionRestSec, 10) || 0))
-      }));
-    }
-
-    function applyExercises(exercises) {
-      state.exercises = sanitizeExercises(exercises);
-      const compiled = buildTimeline(state.exercises);
-      state.steps = compiled.steps;
-      state.totalDuration = compiled.totalDuration;
-      state.currentStepIndex = 0;
-      state.stepRemainingSec = state.steps.length > 0 ? state.steps[0].duration : 0;
-      state.isRunning = false;
-      state.isCompleted = false;
-      state.lastFrameTime = null;
-      state.lastAnnouncedWholeSec = null;
-      stopLoop();
-
-      wakeLock.release();
-      dom.headerTotalBadge.textContent = formatMMSS(state.totalDuration);
-      renderExerciseList();
-      renderTimerUI(true);
-    }
-
-    /**
-     * ============================================================================
-     * 9. CORE TIMER ENGINE (DRIFT-FREE DELTA LOOP)
-     * ============================================================================
-     */
-    // The loop runs on setInterval + wall-clock time instead of requestAnimationFrame:
-    // rAF stops completely when the screen dims or the tab is hidden, which froze the timer.
-    function startLoop() {
-      stopLoop();
-      state.lastFrameTime = performance.now();
-      state.timerId = setInterval(tickLoop, 100);
-    }
-
-    function stopLoop() {
-      if (state.timerId !== null) {
-        clearInterval(state.timerId);
-        state.timerId = null;
-      }
-    }
-
-    function startTimer() {
-      if (state.steps.length === 0) return;
-
-      // If routine was already completed, restart from beginning
-      if (state.isCompleted) {
-        state.steps.forEach(s => { s.duration = s.originalDuration; });
-        state.currentStepIndex = 0;
-        state.stepRemainingSec = state.steps[0].duration;
-        state.isCompleted = false;
-        renderExerciseList();
-      }
-
-      // Both of these must run synchronously inside the tap handler
-      audio.unlock();
-      wakeLock.request();
-
-      const isFreshStart =
-        state.currentStepIndex === 0 &&
-        Math.abs(state.stepRemainingSec - state.steps[0].duration) < 0.05 &&
-        !state.isRunning;
-
-      state.isRunning = true;
-      state.lastAnnouncedWholeSec = Math.ceil(state.stepRemainingSec);
-      state.tenSecAnnounced = state.stepRemainingSec <= 10.5;
-
-      if (isFreshStart) {
-        audio.announceStep(state.steps[0]);
-      } else {
-        audio.speak('Resume.');
-      }
-
-      renderTimerUI(true);
-      startLoop();
-    }
-
-    function pauseTimer() {
-      state.isRunning = false;
-      state.lastFrameTime = null;
-      stopLoop();
-      audio.speak('Paused.');
-      // Screen stays awake while paused so the session is still visible.
-      renderTimerUI(true);
-    }
-
-    function toggleStartPause() {
-      if (state.isRunning) {
-        pauseTimer();
-      } else {
-        startTimer();
-      }
-    }
-
-    function resetRoutine() {
-      if (!state.resetConfirmPending) {
-        state.resetConfirmPending = true;
-        dom.resetBtn.textContent = 'Confirm Reset?';
-        dom.resetBtn.classList.add('bg-rose-600', 'text-white', 'border-rose-400');
-        clearTimeout(state.resetConfirmTimeout);
-        state.resetConfirmTimeout = setTimeout(() => {
-          state.resetConfirmPending = false;
-          dom.resetBtn.textContent = 'Reset Routine';
-          dom.resetBtn.classList.remove('bg-rose-600', 'text-white', 'border-rose-400');
-        }, 3000);
-        return;
-      }
-
-      clearTimeout(state.resetConfirmTimeout);
-      state.resetConfirmPending = false;
-      dom.resetBtn.textContent = 'Reset Routine';
-      dom.resetBtn.classList.remove('bg-rose-600', 'text-white', 'border-rose-400');
-
-      // Restore any +10s adjustments to original step durations
-      state.steps.forEach(s => { s.duration = s.originalDuration; });
-      state.currentStepIndex = 0;
-      state.stepRemainingSec = state.steps[0] ? state.steps[0].duration : 0;
-      state.isRunning = false;
-      state.isCompleted = false;
-      state.lastFrameTime = null;
-      state.lastAnnouncedWholeSec = null;
-      stopLoop();
-
-      audio.stopSpeaking();
-      wakeLock.release();
-      renderExerciseList();
-      renderTimerUI(true);
-      showToast('Routine reset to Exercise 1.', 'info');
-    }
-
-    function jumpToStep(targetIndex, shouldAnnounce = true) {
-      if (targetIndex < 0) targetIndex = 0;
-      if (targetIndex >= state.steps.length) {
-        completeRoutine();
-        return;
-      }
-
-      state.isCompleted = false;
-      state.currentStepIndex = targetIndex;
-      state.stepRemainingSec = state.steps[targetIndex].duration;
-      state.lastAnnouncedWholeSec = Math.ceil(state.stepRemainingSec);
-      state.tenSecAnnounced = state.stepRemainingSec <= 10.5;
-      state.lastFrameTime = performance.now();
-
-      if (state.isRunning && shouldAnnounce) {
-        audio.announceStep(state.steps[targetIndex]);
-      }
-
-      renderExerciseList();
-      renderTimerUI(true);
-    }
-
-    function jumpToExercise(exerciseIndex) {
-      const firstStepIdx = state.steps.findIndex(
-        s => s.exerciseIndex === exerciseIndex && s.type === 'WORK'
-      );
-      if (firstStepIdx !== -1) {
-        audio.unlock();
-        jumpToStep(firstStepIdx, true);
-        const exName = state.exercises[exerciseIndex]?.name || 'Exercise';
-        showToast(`Jumped to ${exName} (Set 1)`, 'info');
-      }
-    }
-
-    function adjustTime(deltaSec) {
-      if (state.isCompleted || state.steps.length === 0) return;
-      const currentStep = state.steps[state.currentStepIndex];
-
-      if (deltaSec > 0) {
-        state.stepRemainingSec += deltaSec;
-        if (state.stepRemainingSec > currentStep.duration) {
-          currentStep.duration = Math.ceil(state.stepRemainingSec);
-        }
-      } else {
-        if (state.stepRemainingSec > 1.2) {
-          state.stepRemainingSec = Math.max(1, state.stepRemainingSec + deltaSec);
-        } else {
-          // If already at 1s, advance to next step
-          jumpToStep(state.currentStepIndex + 1, true);
-          return;
-        }
-      }
-
-      state.lastAnnouncedWholeSec = Math.ceil(state.stepRemainingSec);
-      state.tenSecAnnounced = state.stepRemainingSec <= 10.5;
-      renderTimerUI(true);
-    }
-
-    function completeRoutine() {
-      state.isRunning = false;
-      state.isCompleted = true;
-      state.stepRemainingSec = 0;
-      state.lastFrameTime = null;
-      stopLoop();
-      wakeLock.release();
-      audio.announceComplete();
-      renderExerciseList();
-      renderTimerUI(true);
-    }
-
-    function tickLoop() {
-      if (!state.isRunning) return;
-
-      const now = performance.now();
-      // No cap on dt: if the phone throttled us (screen off / background), catch up on real time.
-      const dt = Math.max(0, (now - state.lastFrameTime) / 1000);
-      state.lastFrameTime = now;
-      state.stepRemainingSec -= dt;
-
-      // Step completion (loop, in case several short intervals elapsed while throttled)
-      let advanced = false;
-      while (state.stepRemainingSec <= 0) {
-        const nextIdx = state.currentStepIndex + 1;
-        if (nextIdx >= state.steps.length) {
-          completeRoutine();
-          return;
-        }
-        const overflow = state.stepRemainingSec; // negative or zero
-        state.currentStepIndex = nextIdx;
-        state.stepRemainingSec = state.steps[nextIdx].duration + overflow;
-        advanced = true;
-      }
-
-      if (advanced) {
-        state.lastAnnouncedWholeSec = Math.ceil(state.stepRemainingSec);
-        state.tenSecAnnounced = state.stepRemainingSec <= 10.5;
-        audio.announceStep(state.steps[state.currentStepIndex], { natural: true });
-        renderExerciseList();
-        renderTimerUI(true);
-        return;
-      }
-
-      const wholeSec = Math.ceil(state.stepRemainingSec);
-      const step = state.steps[state.currentStepIndex];
-
-      // "10 seconds left" on longer intervals
-      if (!state.tenSecAnnounced && wholeSec === 10 && step.duration >= 30) {
-        state.tenSecAnnounced = true;
-        audio.announceTenSecondsLeft();
-      }
-
-      // Spoken + beeped countdown at 3, 2, 1 seconds remaining
-      if (wholeSec !== state.lastAnnouncedWholeSec && wholeSec >= 1 && wholeSec <= 3) {
-        state.lastAnnouncedWholeSec = wholeSec;
-        audio.countdown(wholeSec);
-        dom.countdownDisplay.classList.remove('tick-pop');
-        void dom.countdownDisplay.offsetWidth; // Force reflow for animation
-        dom.countdownDisplay.classList.add('tick-pop');
-      }
-
-      renderTimerUI(false);
-    }
-
-    /**
-     * ============================================================================
-     * 10. UI RENDERING (PHASE THEMES, RING, PROGRESS & SIDEBAR)
-     * ============================================================================
-     */
-    function renderTimerUI(stepChanged = false) {
-      if (state.steps.length === 0) return;
-
-      if (state.isCompleted) {
-        // Completion Theme
-        dom.timerCard.className = 'lg:col-span-7 bg-slate-900 border-2 border-emerald-400/70 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden';
-        dom.phaseGlow.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-emerald-400/20 blur-3xl transition-colors duration-500';
-        dom.phasePill.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-emerald-500/25 text-emerald-300 border border-emerald-400/50';
-        dom.phaseDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-        dom.phaseLabel.textContent = 'SESSION COMPLETE';
-        dom.pausedPill.classList.add('hidden');
-
-        dom.exerciseIndexText.textContent = state.exercises.length;
-        dom.exerciseTotalText.textContent = state.exercises.length;
-
-        dom.mainHeadline.textContent = 'Routine Complete!';
-        dom.subHeadlineContainer.classList.remove('hidden');
-        dom.subHeadline.className = 'text-lg sm:text-xl font-bold text-emerald-300';
-        dom.subHeadline.textContent = `All ${state.exercises.length} exercises finished (${formatMMSS(state.totalDuration)})`;
-        dom.setPipsContainer.innerHTML = '';
-        dom.transitionCallout.classList.add('hidden');
-
-        dom.progressRing.style.stroke = '#34d399';
-        dom.progressRing.style.strokeDashoffset = '0';
-        dom.countdownDisplay.textContent = '00:00';
-        dom.stepDurationSub.textContent = 'Great job!';
-        dom.upNextText.textContent = 'Session finished — tap Restart to go again';
-
-        dom.startPauseBtn.className = 'col-span-6 min-h-[56px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-black text-lg sm:text-xl tracking-wide shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2.5 transition-all';
-        dom.playIcon.classList.remove('hidden');
-        dom.pauseIcon.classList.add('hidden');
-        dom.startPauseLabel.textContent = 'Restart Routine';
-
-        dom.elapsedTimeText.textContent = formatMMSS(state.totalDuration);
-        dom.remainingTimeText.textContent = '00:00';
-        dom.overallPercentText.textContent = '100%';
-        dom.overallProgressBar.style.width = '100%';
-        return;
-      }
-
-      const step = state.steps[state.currentStepIndex];
-
-      // Update phase visual styling when step or running state changes
-      if (stepChanged) {
-        dom.exerciseIndexText.textContent = step.exerciseIndex + 1;
-        dom.exerciseTotalText.textContent = state.exercises.length;
-
-        // Paused badge visibility
-        const isMidSessionPaused =
-          !state.isRunning &&
-          (state.currentStepIndex > 0 || Math.abs(state.stepRemainingSec - step.duration) > 0.05);
-        dom.pausedPill.classList.toggle('hidden', !isMidSessionPaused);
-
-        // Start/Pause Button appearance
-        if (state.isRunning) {
-          dom.startPauseBtn.className = 'col-span-6 min-h-[56px] rounded-2xl bg-slate-100 hover:bg-white active:scale-[0.98] text-slate-950 font-black text-lg sm:text-xl tracking-wide shadow-lg flex items-center justify-center gap-2.5 transition-all';
-          dom.playIcon.classList.add('hidden');
-          dom.pauseIcon.classList.remove('hidden');
-          dom.startPauseLabel.textContent = 'Pause';
-        } else {
-          const isResume = isMidSessionPaused;
-          dom.startPauseBtn.className = 'col-span-6 min-h-[56px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-black text-lg sm:text-xl tracking-wide shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2.5 transition-all';
-          dom.playIcon.classList.remove('hidden');
-          dom.pauseIcon.classList.add('hidden');
-          dom.startPauseLabel.textContent = isResume ? 'Resume' : 'Start Routine';
-        }
-
-        // Phase-Specific Color Themes & Layout
-        if (step.type === 'WORK') {
-          // EMERALD GREEN THEME
-          dom.timerCard.className = 'lg:col-span-7 bg-slate-900 border-2 border-emerald-500/50 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden';
-          dom.phaseGlow.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-emerald-500/15 blur-3xl transition-colors duration-500';
-          dom.phasePill.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
-          dom.phaseDot.className = `w-2.5 h-2.5 rounded-full bg-emerald-400 ${state.isRunning ? 'animate-ping' : ''}`;
-          dom.phaseLabel.textContent = state.isRunning ? 'WORK' : 'READY — WORK';
-          dom.progressRing.style.stroke = '#10b981';
-
-          dom.mainHeadline.textContent = step.exerciseName;
-          dom.subHeadlineContainer.classList.remove('hidden');
-          dom.subHeadline.className = 'text-lg sm:text-2xl font-extrabold text-emerald-300';
-          dom.subHeadline.textContent = step.totalSets > 1
-            ? `Set ${step.setNumber} of ${step.totalSets}`
-            : 'Single Continuous Set';
-          dom.transitionCallout.classList.add('hidden');
-          renderSetPips(step.setNumber, step.totalSets, 'WORK');
-
-        } else if (step.type === 'SET_REST') {
-          // SKY BLUE THEME
-          dom.timerCard.className = 'lg:col-span-7 bg-slate-900 border-2 border-sky-400/50 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden';
-          dom.phaseGlow.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-sky-400/15 blur-3xl transition-colors duration-500';
-          dom.phasePill.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-400/40';
-          dom.phaseDot.className = `w-2.5 h-2.5 rounded-full bg-sky-400 ${state.isRunning ? 'animate-pulse' : ''}`;
-          dom.phaseLabel.textContent = 'SET REST';
-          dom.progressRing.style.stroke = '#38bdf8';
-
-          dom.mainHeadline.textContent = 'Rest Between Sets';
-          dom.subHeadlineContainer.classList.remove('hidden');
-          dom.subHeadline.className = 'text-base sm:text-xl font-bold text-sky-300';
-          dom.subHeadline.textContent = `Upcoming: Set ${step.setNumber} of ${step.totalSets} — ${step.exerciseName}`;
-          dom.transitionCallout.classList.add('hidden');
-          renderSetPips(step.setNumber, step.totalSets, 'SET_REST');
-
-        } else if (step.type === 'TRANSITION_REST' || step.type === 'PREP') {
-          // WARM AMBER THEME
-          dom.timerCard.className = 'lg:col-span-7 bg-slate-900 border-2 border-amber-400/60 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden';
-          dom.phaseGlow.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-amber-400/15 blur-3xl transition-colors duration-500';
-          dom.phasePill.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/45';
-          dom.phaseDot.className = `w-2.5 h-2.5 rounded-full bg-amber-400 ${state.isRunning ? 'animate-pulse' : ''}`;
-          const isPrep = step.type === 'PREP';
-          dom.phaseLabel.textContent = isPrep ? 'GET READY' : 'TRANSITION REST';
-          dom.progressRing.style.stroke = '#fbbf24';
-
-          dom.mainHeadline.textContent = isPrep ? 'Get Ready' : 'Transition Rest';
-          dom.transitionCalloutLabel.textContent = isPrep ? 'First Exercise' : 'Transition Rest — Next Exercise';
-          dom.subHeadlineContainer.classList.add('hidden');
-          dom.transitionCallout.classList.remove('hidden');
-          dom.transitionNextName.textContent = step.nextExerciseName || 'Next Exercise';
-          dom.transitionNextMeta.textContent = step.nextExerciseMeta || '';
-        }
-
-        dom.upNextText.textContent = step.upNextLabel;
-        dom.stepDurationSub.textContent = `of ${formatMMSS(step.duration)} interval`;
-      }
-
-      // Update Digital Clock & Ring Progress (Runs every animation frame smoothly)
-      dom.countdownDisplay.textContent = formatMMSS(state.stepRemainingSec);
-
-      const ratio = step.duration > 0 ? Math.max(0, Math.min(1, state.stepRemainingSec / step.duration)) : 0;
-      const offset = RING_CIRCUMFERENCE * (1 - ratio);
-      dom.progressRing.style.strokeDashoffset = String(offset.toFixed(2));
-
-      // Overall session elapsed & remaining
-      const stepElapsed = Math.max(0, step.duration - state.stepRemainingSec);
-      const totalElapsed = Math.min(state.totalDuration, step.startOffset + stepElapsed);
-      const totalRemaining = Math.max(0, state.totalDuration - totalElapsed);
-      const pct = state.totalDuration > 0 ? Math.min(100, Math.round((totalElapsed / state.totalDuration) * 100)) : 0;
-
-      dom.elapsedTimeText.textContent = formatMMSS(totalElapsed);
-      dom.remainingTimeText.textContent = formatMMSS(totalRemaining);
-      dom.overallPercentText.textContent = `${pct}%`;
-      dom.overallProgressBar.style.width = `${(state.totalDuration > 0 ? (totalElapsed / state.totalDuration) * 100 : 0).toFixed(2)}%`;
-    }
-
-    function renderSetPips(currentSet, totalSets, phaseType) {
-      if (totalSets <= 1) {
-        dom.setPipsContainer.innerHTML = '';
-        return;
-      }
-      const pips = [];
-      for (let i = 1; i <= totalSets; i++) {
-        let cls = 'h-2 rounded-full transition-all duration-300 ';
-        if (i < currentSet) {
-          cls += 'w-6 bg-emerald-400';
-        } else if (i === currentSet) {
-          cls += phaseType === 'WORK'
-            ? 'w-8 bg-emerald-400 ring-2 ring-emerald-400/40'
-            : 'w-8 bg-sky-400 ring-2 ring-sky-400/40';
-        } else {
-          cls += 'w-5 bg-slate-700';
-        }
-        pips.push(`<span class="${cls}"></span>`);
-      }
-      dom.setPipsContainer.innerHTML = pips.join('');
-    }
-
-    function renderExerciseList() {
-      const activeStep = state.steps[state.currentStepIndex];
-      const activeExIdx = state.isCompleted
-        ? state.exercises.length
-        : (activeStep ? activeStep.exerciseIndex : 0);
-
-      const completedCount = state.isCompleted ? state.exercises.length : activeExIdx;
-      dom.completedCountBadge.textContent = `${completedCount} / ${state.exercises.length} Done`;
-
-      dom.routineListContainer.innerHTML = state.exercises.map((ex, idx) => {
-        const isLast = idx === state.exercises.length - 1;
-        const exTotalSec = calculateExerciseDuration(ex, isLast);
-        const isDone = state.isCompleted || idx < activeExIdx;
-        const isCurrent = !state.isCompleted && idx === activeExIdx;
-
-        // Build clean summary string
-        const parts = [`${ex.sets} × ${ex.workSec}s work`];
-        if (ex.sets > 1 && ex.setRestSec > 0) parts.push(`${ex.setRestSec}s rest`);
-        if (!isLast && ex.transitionRestSec > 0) parts.push(`${ex.transitionRestSec}s trans`);
-        const metaStr = parts.join(' · ');
-
-        let cardCls = 'w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 group cursor-pointer ';
-        let badgeHtml = '';
-
-        if (isCurrent) {
-          cardCls += 'bg-emerald-500/12 border-emerald-500/60 shadow-md';
-          badgeHtml = `<span class="w-7 h-7 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">${idx + 1}</span>`;
-        } else if (isDone) {
-          cardCls += 'bg-slate-800/45 border-slate-800 hover:border-slate-700 opacity-75 hover:opacity-100';
-          badgeHtml = `
-            <span class="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.8">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>`;
-        } else {
-          cardCls += 'bg-slate-800/70 border-slate-800 hover:bg-slate-800 hover:border-slate-700';
-          badgeHtml = `<span class="w-7 h-7 rounded-xl bg-slate-700/80 text-slate-300 font-bold text-xs flex items-center justify-center shrink-0 group-hover:bg-slate-600 group-hover:text-white">${idx + 1}</span>`;
-        }
-
-        return `
-          <button type="button" data-ex-idx="${idx}" class="${cardCls}">
-            <div class="flex items-center gap-3 min-w-0">
-              ${badgeHtml}
-              <div class="min-w-0">
-                <div class="font-bold text-sm sm:text-[15px] truncate ${isCurrent ? 'text-white' : isDone ? 'text-slate-300' : 'text-slate-100'}">
-                  ${escapeHTML(ex.name)}
+<body class="min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+    <!-- Toast Notification Container (Replaces alert() cleanly) -->
+    <div id="toast-container"
+        class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-sm px-4">
+    </div> <!-- Top Header Bar -->
+    <header class="sticky top-0 z-30 bg-obsidian/90 backdrop-blur-md border-b border-borderSubtle/80">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3"> <!-- Brand / Title -->
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div
+                    class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-950/50 shrink-0">
+                    <!-- Physiotherapy / Mobility Pulse SVG Icon --> <svg class="w-5 h-5 text-slate-950" fill="none"
+                        stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+                    </svg> </div>
+                <div class="truncate">
+                    <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white leading-tight truncate">
+                        Protocol 211 </h1>
+                    <p class="text-[11px] sm:text-xs text-slate-400 font-medium truncate"> Physiotherapy Interval Timer
+                    </p>
                 </div>
-                <div class="text-xs text-slate-400 truncate mt-0.5">${metaStr}</div>
-              </div>
-            </div>
-            <div class="text-right shrink-0">
-              <span class="font-mono text-xs font-bold px-2 py-1 rounded-lg ${isCurrent ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-900/80 text-slate-400'}">
-                ${formatMMSS(exTotalSec)}
-              </span>
-            </div>
-          </button>
-        `;
-      }).join('');
-
-      // Auto-scroll active item into view gently inside the sidebar
-      const activeBtn = dom.routineListContainer.querySelector(`[data-ex-idx="${activeExIdx}"]`);
-      if (activeBtn) {
-        activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-
-    function escapeHTML(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    /**
-     * ============================================================================
-     * 11. ROUTINE EDITOR MODAL (ADD, EDIT, REORDER, DELETE, JSON IMPORT/EXPORT)
-     * ============================================================================
-     */
-    function openEditorModal() {
-      if (state.isRunning) {
-        pauseTimer();
-      }
-      state.draftExercises = state.exercises.map(ex => ({ ...ex }));
-      dom.importDrawer.classList.add('hidden');
-      renderEditorRows();
-      dom.editorModal.classList.remove('hidden');
-      dom.editorModal.classList.add('flex');
-    }
-
-    function closeEditorModal() {
-      dom.editorModal.classList.add('hidden');
-      dom.editorModal.classList.remove('flex');
-    }
-
-    function updateEditorTotalDuration() {
-      const total = state.draftExercises.reduce((acc, ex, idx) => {
-        const isLast = idx === state.draftExercises.length - 1;
-        return acc + calculateExerciseDuration(ex, isLast);
-      }, 0);
-      dom.editorTotalDuration.textContent = formatMMSS(total);
-    }
-
-    function renderEditorRows() {
-      updateEditorTotalDuration();
-
-      if (state.draftExercises.length === 0) {
-        dom.editorRowsContainer.innerHTML = `
-          <div class="text-center py-10 px-4 rounded-2xl border border-dashed border-slate-700 text-slate-400 text-sm">
-            No exercises in routine. Click <strong class="text-emerald-400">+ Add Exercise</strong> above to add one.
-          </div>
-        `;
-        return;
-      }
-
-      dom.editorRowsContainer.innerHTML = state.draftExercises.map((ex, idx) => {
-        const isLast = idx === state.draftExercises.length - 1;
-        const rowTotal = calculateExerciseDuration(ex, isLast);
-
-        return `
-          <div class="bg-slate-800/80 border border-slate-700/90 rounded-2xl p-3.5 sm:p-4 space-y-3" data-draft-idx="${idx}">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 flex-1 min-w-0">
-                <span class="w-6 h-6 rounded-lg bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center shrink-0">${idx + 1}</span>
-                <input
-                  type="text"
-                  data-field="name"
-                  value="${escapeHTML(ex.name)}"
-                  placeholder="Exercise name"
-                  class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-sm font-bold text-white focus:outline-none"
-                />
-              </div>
-
-              <div class="flex items-center gap-1 shrink-0">
-                <span class="font-mono text-xs font-bold text-slate-400 mr-1.5 hidden sm:inline">${formatMMSS(rowTotal)}</span>
-                <button type="button" data-action="move-up" ${idx === 0 ? 'disabled' : ''} title="Move Up" class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-30 text-slate-300 transition-colors">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
-                </button>
-                <button type="button" data-action="move-down" ${isLast ? 'disabled' : ''} title="Move Down" class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-30 text-slate-300 transition-colors">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </button>
-                <button type="button" data-action="delete" title="Delete Exercise" class="p-1.5 rounded-lg bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-colors">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div>
-                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Sets</label>
-                <input type="number" min="1" max="50" data-field="sets" value="${ex.sets}" class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-white focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-1">Work (sec)</label>
-                <input type="number" min="1" max="3600" data-field="workSec" value="${ex.workSec}" class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-white focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-[11px] font-bold uppercase tracking-wider text-sky-400 mb-1">Set Rest (sec)</label>
-                <input type="number" min="0" max="1800" data-field="setRestSec" value="${ex.setRestSec}" class="w-full bg-slate-900 border border-slate-700 focus:border-sky-500 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-white focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">
-                  ${isLast ? 'Trans. Rest (Last)' : 'Transition (sec)'}
-                </label>
-                <input type="number" min="0" max="1800" data-field="transitionRestSec" value="${isLast ? 0 : ex.transitionRestSec}" ${isLast ? 'disabled' : ''} class="w-full bg-slate-900 border border-slate-700 focus:border-amber-500 disabled:opacity-40 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-white focus:outline-none" />
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    /**
-     * ============================================================================
-     * 12. EVENT LISTENERS & KEYBOARD SHORTCUTS
-     * ============================================================================
-     */
-    // Audio & Header Controls
-    dom.toggleSoundBtn.addEventListener('click', () => {
-      audio.soundEnabled = !audio.soundEnabled;
-      if (audio.soundEnabled) audio.unlock();
-      savePreferences();
-      updateAudioToggleUI();
-      showToast(audio.soundEnabled ? 'Sound cues enabled' : 'Sound cues muted', 'info');
-    });
-
-    dom.toggleVoiceBtn.addEventListener('click', () => {
-      audio.voiceEnabled = !audio.voiceEnabled;
-      if (!audio.voiceEnabled) {
-        audio.stopSpeaking();
-      } else {
-        audio.unlock();
-        audio.speak('Voice on.');
-      }
-      savePreferences();
-      updateAudioToggleUI();
-      showToast(audio.voiceEnabled ? 'Voice announcements enabled' : 'Voice announcements muted', 'info');
-    });
-
-    dom.testSoundBtn.addEventListener('click', () => {
-      audio.testAudio();
-      showToast('Testing audio & voice cues...', 'info');
-    });
-
-    // Main Timer Controls
-    dom.startPauseBtn.addEventListener('click', toggleStartPause);
-    dom.prevStepBtn.addEventListener('click', () => {
-      audio.unlock();
-      // If more than 3 seconds into current step, restart current step; otherwise go to previous step
-      const currentStep = state.steps[state.currentStepIndex];
-      if (currentStep && (currentStep.duration - state.stepRemainingSec) > 3) {
-        jumpToStep(state.currentStepIndex, true);
-      } else {
-        jumpToStep(state.currentStepIndex - 1, true);
-      }
-    });
-    dom.nextStepBtn.addEventListener('click', () => {
-      audio.unlock();
-      if (state.isRunning) wakeLock.request();
-      jumpToStep(state.currentStepIndex + 1, true);
-    });
-    dom.minus10Btn.addEventListener('click', () => adjustTime(-10));
-    dom.plus10Btn.addEventListener('click', () => adjustTime(10));
-    dom.resetBtn.addEventListener('click', resetRoutine);
-
-    // Sidebar Exercise Click Delegation
-    dom.routineListContainer.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-ex-idx]');
-      if (!btn) return;
-      const exIdx = parseInt(btn.getAttribute('data-ex-idx'), 10);
-      if (!Number.isNaN(exIdx)) {
-        jumpToExercise(exIdx);
-      }
-    });
-
-    // Keyboard Shortcut: Spacebar for Start / Pause
-    document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
-        const tag = document.activeElement?.tagName;
-        const modalOpen = !dom.editorModal.classList.contains('hidden');
-        if (modalOpen || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-          return;
-        }
-        e.preventDefault();
-        toggleStartPause();
-      }
-    });
-
-    // Editor Modal Events
-    dom.openEditorBtn.addEventListener('click', openEditorModal);
-    dom.closeEditorBtn.addEventListener('click', closeEditorModal);
-    dom.cancelEditorBtn.addEventListener('click', closeEditorModal);
-
-    dom.addExerciseBtn.addEventListener('click', () => {
-      // Ensure previous last exercise gets default 30s transition rest if it was 0
-      if (state.draftExercises.length > 0) {
-        const prevLast = state.draftExercises[state.draftExercises.length - 1];
-        if (prevLast.transitionRestSec === 0) {
-          prevLast.transitionRestSec = 30;
-        }
-      }
-      state.draftExercises.push({
-        id: `ex-${Date.now()}`,
-        name: 'New Mobility Exercise',
-        sets: 3,
-        workSec: 45,
-        setRestSec: 15,
-        transitionRestSec: 0
-      });
-      renderEditorRows();
-      dom.editorRowsContainer.scrollTop = dom.editorRowsContainer.scrollHeight;
-    });
-
-    dom.editorRowsContainer.addEventListener('input', (e) => {
-      const card = e.target.closest('[data-draft-idx]');
-      if (!card) return;
-      const idx = parseInt(card.getAttribute('data-draft-idx'), 10);
-      const field = e.target.getAttribute('data-field');
-      if (Number.isNaN(idx) || !field || !state.draftExercises[idx]) return;
-
-      if (field === 'name') {
-        state.draftExercises[idx].name = e.target.value;
-      } else {
-        const val = Math.max(field === 'sets' || field === 'workSec' ? 1 : 0, parseInt(e.target.value, 10) || 0);
-        state.draftExercises[idx][field] = val;
-        updateEditorTotalDuration();
-        const rowTotalEl = card.querySelector('.font-mono.text-xs');
-        if (rowTotalEl) {
-          const isLast = idx === state.draftExercises.length - 1;
-          rowTotalEl.textContent = formatMMSS(calculateExerciseDuration(state.draftExercises[idx], isLast));
-        }
-      }
-    });
-
-    dom.editorRowsContainer.addEventListener('click', (e) => {
-      const actionBtn = e.target.closest('[data-action]');
-      if (!actionBtn) return;
-      const card = actionBtn.closest('[data-draft-idx]');
-      const idx = parseInt(card.getAttribute('data-draft-idx'), 10);
-      const action = actionBtn.getAttribute('data-action');
-
-      if (action === 'move-up' && idx > 0) {
-        const temp = state.draftExercises[idx - 1];
-        state.draftExercises[idx - 1] = state.draftExercises[idx];
-        state.draftExercises[idx] = temp;
-        // Ensure non-final exercises have transition rest if moved from bottom
-        if (state.draftExercises[idx - 1].transitionRestSec === 0) {
-          state.draftExercises[idx - 1].transitionRestSec = 30;
-        }
-        renderEditorRows();
-      } else if (action === 'move-down' && idx < state.draftExercises.length - 1) {
-        const temp = state.draftExercises[idx + 1];
-        state.draftExercises[idx + 1] = state.draftExercises[idx];
-        state.draftExercises[idx] = temp;
-        if (state.draftExercises[idx].transitionRestSec === 0) {
-          state.draftExercises[idx].transitionRestSec = 30;
-        }
-        renderEditorRows();
-      } else if (action === 'delete') {
-        state.draftExercises.splice(idx, 1);
-        renderEditorRows();
-      }
-    });
-
-    dom.resetDefaultRoutineBtn.addEventListener('click', () => {
-      state.draftExercises = sanitizeExercises(DEFAULT_ROUTINE);
-      renderEditorRows();
-      showToast('Restored default 11-exercise routine (42:45) in editor.', 'info');
-    });
-
-    dom.saveRoutineBtn.addEventListener('click', () => {
-      if (state.draftExercises.length === 0) {
-        showToast('Please add at least one exercise before saving.', 'error');
-        return;
-      }
-      const cleaned = sanitizeExercises(state.draftExercises);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
-      } catch (err) {
-        // Ignore storage errors
-      }
-      applyExercises(cleaned);
-      closeEditorModal();
-      showToast(`Saved routine (${cleaned.length} exercises, ${formatMMSS(state.totalDuration)}).`, 'success');
-    });
-
-    // Export JSON (Download + Clipboard fallback)
-    dom.exportJsonBtn.addEventListener('click', () => {
-      const jsonStr = JSON.stringify(sanitizeExercises(state.draftExercises), null, 2);
-
-      // Copy to clipboard using execCommand for iframe compatibility
-      const tempArea = document.createElement('textarea');
-      tempArea.value = jsonStr;
-      tempArea.style.position = 'fixed';
-      tempArea.style.opacity = '0';
-      document.body.appendChild(tempArea);
-      tempArea.select();
-      try {
-        document.execCommand('copy');
-      } catch (e) {
-        // Ignore copy error
-      }
-      document.body.removeChild(tempArea);
-
-      // Trigger file download
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'physio-routine.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast('Routine JSON exported & copied to clipboard!', 'success');
-    });
-
-    // Import JSON Toggle & Handlers
-    dom.toggleImportBtn.addEventListener('click', () => {
-      dom.importDrawer.classList.toggle('hidden');
-      if (!dom.importDrawer.classList.contains('hidden')) {
-        dom.importJsonTextarea.focus();
-      }
-    });
-
-    dom.cancelImportBtn.addEventListener('click', () => {
-      dom.importDrawer.classList.add('hidden');
-    });
-
-    dom.importJsonFile.addEventListener('change', (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        dom.importJsonTextarea.value = String(ev.target?.result || '');
-      };
-      reader.readAsText(file);
-    });
-
-    dom.applyImportBtn.addEventListener('click', () => {
-      const rawText = dom.importJsonTextarea.value.trim();
-      if (!rawText) {
-        showToast('Paste valid JSON or choose a .json file first.', 'warning');
-        return;
-      }
-      try {
-        const parsed = JSON.parse(rawText);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error('JSON must be a non-empty array of exercises.');
-        }
-        state.draftExercises = sanitizeExercises(parsed);
-        renderEditorRows();
-        dom.importDrawer.classList.add('hidden');
-        dom.importJsonTextarea.value = '';
-        showToast(`Loaded ${state.draftExercises.length} exercises into editor.`, 'success');
-      } catch (err) {
-        showToast(`Invalid JSON: ${err.message}`, 'error');
-      }
-    });
-
-    /**
-     * ============================================================================
-     * 13. BOOTSTRAP ON DOM CONTENT LOADED
-     * ============================================================================
-     */
-    window.addEventListener('DOMContentLoaded', () => {
-      loadPreferences();
-      const initialExercises = loadRoutineFromStorage();
-      applyExercises(initialExercises);
-    });
-  </script>
+            </div> <!-- Screen Wake Lock Status Pill -->
+            <div id="wake-lock-pill" title="Keeps your screen from sleeping during active workouts"
+                class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-300 bg-slate-900/90 border-slate-700/80 text-slate-400 shrink-0">
+                <span id="wake-lock-dot" class="w-2 h-2 rounded-full bg-slate-500"></span> <span
+                    id="wake-lock-text">Screen Awake: Standby</span> </div>
+        </div>
+    </header> <!-- Main Content Wrapper -->
+    <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-5 sm:py-6 flex flex-col gap-5"> <!-- Day Selector Tabs -->
+        <section aria-label="Select Workout Day"
+            class="bg-surface p-1.5 rounded-2xl border border-borderSubtle grid grid-cols-3 gap-1.5 shadow-inner">
+            <button type="button" data-day="1"
+                class="day-tab-btn py-2.5 px-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                <span>Day 1</span> <span id="day-1-meta" class="text-[11px] font-medium opacity-80">8 exercises</span>
+            </button> <button type="button" data-day="2"
+                class="day-tab-btn py-2.5 px-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                <span>Day 2</span> <span id="day-2-meta" class="text-[11px] font-medium opacity-80">8 exercises</span>
+            </button> <button type="button" data-day="3"
+                class="day-tab-btn py-2.5 px-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                <span>Day 3</span> <span id="day-3-meta" class="text-[11px] font-medium opacity-80">8 exercises</span>
+            </button> </section> <!-- Primary Timer Hero Card -->
+        <section id="timer-card"
+            class="relative overflow-hidden bg-surface rounded-3xl border border-borderSubtle p-5 sm:p-7 shadow-2xl transition-colors duration-300">
+            <!-- Subtle ambient glow reflecting active phase -->
+            <div id="phase-ambient-glow"
+                class="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-20 bg-emerald-500 transition-colors duration-500">
+            </div> <!-- Top Row inside Timer: Phase Badge & Overall Session Progress -->
+            <div class="relative z-10 flex flex-wrap items-center justify-between gap-2 mb-4">
+                <div class="flex items-center gap-2"> <span id="phase-badge"
+                        class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs sm:text-sm font-extrabold tracking-wider uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        <span id="phase-badge-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span> <span
+                            id="phase-badge-text">READY</span> </span> <span id="interval-pill"
+                        class="px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-slate-800/90 text-slate-200 border border-slate-700/80">
+                        Interval 1 of 6 </span> </div>
+                <div class="text-right text-xs font-semibold text-slate-400 tabular-clock"> <span>Remaining: </span>
+                    <span id="total-remaining-time" class="text-slate-200 font-bold">18:45</span> </div>
+            </div> <!-- Current Exercise Title & Category -->
+            <div class="relative z-10 text-center mb-4 sm:mb-5">
+                <div id="current-category-tag"
+                    class="inline-block text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1"> Mobility &
+                    Control </div>
+                <h2 id="current-exercise-title"
+                    class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-snug px-2"> Scorpion
+                </h2>
+                <p id="current-exercise-subtitle" class="text-xs sm:text-sm text-slate-400 mt-1 font-medium"> Exercise 1
+                    of 8 &bull; 60s work / 15s rest </p>
+            </div> <!-- Circular SVG Progress Ring + Large MM:SS Countdown -->
+            <div class="relative z-10 flex items-center justify-center my-2 sm:my-4">
+                <div class="relative w-60 h-60 sm:w-72 sm:h-72 flex items-center justify-center"> <svg
+                        class="w-full h-full drop-shadow-xl" viewBox="0 0 260 260"> <!-- Background Track Circle -->
+                        <circle cx="130" cy="130" r="112" fill="none" stroke="#1e293b" stroke-width="14" />
+                        <!-- Animated Foreground Progress Circle -->
+                        <circle id="progress-ring" class="progress-ring-circle" cx="130" cy="130" r="112" fill="none"
+                            stroke="#10b981" stroke-width="14" stroke-linecap="round" stroke-dasharray="703.7168"
+                            stroke-dashoffset="0" />
+                    </svg> <!-- Centered Countdown Text -->
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center select-none">
+                        <span id="countdown-display"
+                            class="font-mono tabular-clock text-6xl sm:text-7xl font-extrabold text-white tracking-tight leading-none">
+                            01:00 </span> <span id="phase-helper-label"
+                            class="mt-2 text-xs sm:text-sm font-semibold uppercase tracking-widest text-slate-400">
+                            Press Start </span> </div>
+                </div>
+            </div> <!-- "Up Next" Preview Card -->
+            <div id="up-next-card"
+                class="relative z-10 mt-4 bg-obsidian/70 border border-borderSubtle/90 rounded-2xl p-3.5 sm:px-4 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div
+                        class="w-8 h-8 rounded-xl bg-slate-800/90 border border-slate-700/70 flex items-center justify-center text-slate-300 shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                        </svg> </div>
+                    <div class="min-w-0">
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Up Next</div>
+                        <div id="up-next-title" class="text-sm sm:text-base font-bold text-slate-100 truncate"> Interval
+                            Rest (15s) </div>
+                    </div>
+                </div> <span id="up-next-duration"
+                    class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-mono font-bold text-slate-300 shrink-0">
+                    00:15 </span>
+            </div> <!-- Primary Transport Controls -->
+            <div class="relative z-10 mt-5 grid grid-cols-12 gap-2.5 sm:gap-3"> <!-- Previous Step Button --> <button
+                    id="btn-prev" type="button" aria-label="Previous step"
+                    class="col-span-3 sm:col-span-2 min-h-[54px] rounded-2xl bg-card hover:bg-slate-800 active:scale-[0.98] border border-borderSubtle text-slate-200 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg> <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Prev</span>
+                </button> <!-- Start / Pause Primary CTA Button --> <button id="btn-start-pause" type="button"
+                    class="col-span-6 sm:col-span-6 min-h-[54px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-extrabold text-base sm:text-lg shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2.5 transition-all cursor-pointer">
+                    <svg id="icon-play" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                    </svg> <svg id="icon-pause" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+                    </svg> <span id="btn-start-pause-label">Start Workout</span> </button> <!-- Skip Step Button -->
+                <button id="btn-skip" type="button" aria-label="Skip step"
+                    class="col-span-3 sm:col-span-2 min-h-[54px] rounded-2xl bg-card hover:bg-slate-800 active:scale-[0.98] border border-borderSubtle text-slate-200 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg> <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Skip</span>
+                </button> <!-- Reset Button --> <button id="btn-reset" type="button" aria-label="Reset workout"
+                    class="col-span-12 sm:col-span-2 min-h-[46px] sm:min-h-[54px] rounded-2xl bg-card/70 hover:bg-rose-950/40 hover:border-rose-800/60 hover:text-rose-300 active:scale-[0.98] border border-borderSubtle text-slate-300 flex sm:flex-col items-center justify-center gap-1.5 sm:gap-0.5 transition-all cursor-pointer">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.2"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg> <span class="text-xs sm:text-[10px] font-bold uppercase tracking-wider">Reset</span>
+                </button> </div>
+        </section> <!-- Audio, Voice & Timer Options Bar -->
+        <section aria-label="Audio and Timer Settings"
+            class="bg-surface rounded-2xl border border-borderSubtle p-4 flex flex-col gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.2"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg> <span>Voice & Sound Alerts</span> </h3> <button id="btn-test-audio" type="button"
+                    class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] border border-slate-600/70 text-xs font-bold text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg> <span>Test Voice & Sound</span> </button>
+            </div> <!-- Toggle Pills Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2"> <!-- Voice Cues Toggle --> <button id="toggle-voice"
+                    type="button" role="switch" aria-checked="true"
+                    class="setting-toggle-btn p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer">
+                    <div>
+                        <div class="text-xs font-bold text-white">Voice Cues</div>
+                        <div id="toggle-voice-state" class="text-[11px] font-semibold text-emerald-400">ON</div>
+                    </div> <span
+                        class="toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-emerald-500">
+                        <span
+                            class="toggle-knob w-3.5 h-3.5 rounded-full bg-white shadow transition-transform translate-x-3.5"></span>
+                    </span>
+                </button> <!-- Alert Beeps Toggle --> <button id="toggle-beeps" type="button" role="switch"
+                    aria-checked="true"
+                    class="setting-toggle-btn p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer">
+                    <div>
+                        <div class="text-xs font-bold text-white">Alert Beeps</div>
+                        <div id="toggle-beeps-state" class="text-[11px] font-semibold text-emerald-400">ON</div>
+                    </div> <span
+                        class="toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-emerald-500">
+                        <span
+                            class="toggle-knob w-3.5 h-3.5 rounded-full bg-white shadow transition-transform translate-x-3.5"></span>
+                    </span>
+                </button> <!-- Spoken 3-2-1 Countdown Toggle --> <button id="toggle-spoken-countdown" type="button"
+                    role="switch" aria-checked="true"
+                    class="setting-toggle-btn p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer">
+                    <div>
+                        <div class="text-xs font-bold text-white">3-2-1 Voice</div>
+                        <div id="toggle-spoken-countdown-state" class="text-[11px] font-semibold text-emerald-400">ON
+                        </div>
+                    </div> <span
+                        class="toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-emerald-500">
+                        <span
+                            class="toggle-knob w-3.5 h-3.5 rounded-full bg-white shadow transition-transform translate-x-3.5"></span>
+                    </span>
+                </button> <!-- 5s Initial Get Ready Prep Toggle --> <button id="toggle-prep" type="button" role="switch"
+                    aria-checked="true"
+                    class="setting-toggle-btn p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer">
+                    <div>
+                        <div class="text-xs font-bold text-white">5s Start Prep</div>
+                        <div id="toggle-prep-state" class="text-[11px] font-semibold text-emerald-400">ON</div>
+                    </div> <span
+                        class="toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-emerald-500">
+                        <span
+                            class="toggle-knob w-3.5 h-3.5 rounded-full bg-white shadow transition-transform translate-x-3.5"></span>
+                    </span>
+                </button> </div>
+        </section> <!-- Full-Day Interactive Exercise Schedule List -->
+        <section aria-label="Workout Schedule"
+            class="bg-surface rounded-2xl border border-borderSubtle p-4 sm:p-5 flex flex-col gap-3.5 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-borderSubtle/80 pb-3">
+                <div>
+                    <h3 id="schedule-heading" class="text-base sm:text-lg font-extrabold text-white"> Day 1 Protocol
+                        Schedule </h3>
+                    <p class="text-xs text-slate-400 mt-0.5"> Includes <span class="text-violet-300 font-semibold">15s
+                            transition rest</span> between exercises &bull; Tap any exercise to jump </p>
+                </div>
+                <div class="flex items-center gap-2 text-xs font-bold"> <span id="schedule-total-duration"
+                        class="px-3 py-1.5 rounded-xl bg-obsidian border border-borderSubtle text-emerald-300 font-mono">
+                        Total: 19:45 </span> </div>
+            </div> <!-- Dynamic Exercise Cards Container -->
+            <div id="exercise-list-container" class="flex flex-col gap-2.5"> <!-- Populated by JS --> </div>
+        </section>
+    </main>
+    <script>     /**      * ======================================================================== =      * PROTOCOL 211 — PHYSIOTHERAPY INTERVAL TIMER      * ======================================================================== =      * Exact Workout Definitions for Day 1, Day 2, and Day 3.      * Transition Rule: 15-second rest between every distinct exercise      * (after the final interval of exercise N, before interval 1 of exercise N+1).      */     const TRANSITION_REST_SECONDS = 15; const INITIAL_PREP_SECONDS = 5; const WORKOUT_PLANS = { 1: { day: 1, label: "Day 1", exercises: [{ name: "Scorpion", category: "Mobility & Control", work: 60, rest: 15, intervals: 6 }, { name: "Couch stretch", category: "Stretch", work: 60, rest: 15, intervals: 4 }, { name: "Nerve glide: seated", category: "Nerve Glide", work: 60, rest: 0, intervals: 1 }, { name: "Tuck hold", category: "Mobility & Control", work: 20, rest: 10, intervals: 3 }, { name: "QL stretch: side box", category: "Stretch", work: 60, rest: 15, intervals: 4 }, { name: "Nerve glide: supine ankle seated", category: "Nerve Glide", work: 60, rest: 0, intervals: 1 }, { name: "Bench back extension seated", category: "Mobility & Control", work: 60, rest: 0, intervals: 1 }, { name: "Pigeon stretch seated", category: "Stretch", work: 60, rest: 15, intervals: 2 }] }, 2: { day: 2, label: "Day 2", exercises: [{ name: "Bretzel", category: "Mobility & Control", work: 12, rest: 8, intervals: 6 }, { name: "Bench supine iliopsoas stretch", category: "Stretch", work: 60, rest: 15, intervals: 2 }, { name: "Nerve glide: side laying", category: "Nerve Glide", work: 30, rest: 15, intervals: 2 }, { name: "Tuck hold: finger taps", category: "Mobility & Control", work: 40, rest: 0, intervals: 1 }, { name: "QL stretch: seated", category: "Stretch", work: 60, rest: 15, intervals: 2 }, { name: "Nerve glide: supine knee", category: "Nerve Glide", work: 40, rest: 0, intervals: 1 }, { name: "Bench back extension hold", category: "Mobility & Control", work: 20, rest: 15, intervals: 2 }, { name: "Hamstring flossing", category: "Stretch", work: 60, rest: 0, intervals: 1 }] }, 3: { day: 3, label: "Day 3", exercises: [{ name: "Wall half kneeling rotation", category: "Mobility & Control", work: 30, rest: 15, intervals: 6 }, { name: "Supine KB for iliopsoas", category: "Stretch", work: 60, rest: 0, intervals: 1 }, { name: "Nerve glide: standing", category: "Nerve Glide", work: 60, rest: 0, intervals: 1 }, { name: "Bird dog: knee up", category: "Mobility & Control", work: 60, rest: 0, intervals: 1 }, { name: "QL stretch: seated heel on knee", category: "Stretch", work: 60, rest: 15, intervals: 2, note: "Switch sides between intervals" }, { name: "Nerve glide: supine knee + ankle", category: "Nerve Glide", work: 60, rest: 0, intervals: 1 }, { name: "Angle back extension", category: "Mobility & Control", work: 60, rest: 0, intervals: 1 }, { name: "Banded split stretch", category: "Stretch", work: 60, rest: 15, intervals: 2 }] } };      /**      * ======================================================================== =      * APPLICATION STATE & PERSISTENCE      * ======================================================================== =      */     const STORAGE_KEY = 'protocol_211_timer_prefs_v1'; const state = { selectedDay: 1, steps: [],               // Expanded flat list of sequential timer steps       currentStepIndex: 0,       remainingMs: 0,          // High-precision remaining milliseconds in current step       isRunning: false,       isCompleted: false,       lastFrameTime: null,       rafId: null,       lastAnnouncedSecond: null,       // User Settings       voiceEnabled: true,       beepsEnabled: true,       spokenCountdownEnabled: true,       prepEnabled: true,       // Wake Lock State       wakeLockSentinel: null,       wakeLockActive: false,       wakeLockMode: 'standby'  // 'native' | 'fallback' | 'standby'     };      function loadPreferences() {       try {         const raw = localStorage.getItem(STORAGE_KEY);         if (!raw) return;         const parsed = JSON.parse(raw);         if ([1, 2, 3].includes(parsed.selectedDay)) state.selectedDay = parsed.selectedDay;         if (typeof parsed.voiceEnabled === 'boolean') state.voiceEnabled = parsed.voiceEnabled;         if (typeof parsed.beepsEnabled === 'boolean') state.beepsEnabled = parsed.beepsEnabled;         if (typeof parsed.spokenCountdownEnabled === 'boolean') state.spokenCountdownEnabled = parsed.spokenCountdownEnabled;         if (typeof parsed.prepEnabled === 'boolean') state.prepEnabled = parsed.prepEnabled;       } catch (err) {         // Ignore storage read errors in restricted environments       }     }      function savePreferences() {       try {         localStorage.setItem(STORAGE_KEY, JSON.stringify({           selectedDay: state.selectedDay,           voiceEnabled: state.voiceEnabled,           beepsEnabled: state.beepsEnabled,           spokenCountdownEnabled: state.spokenCountdownEnabled,           prepEnabled: state.prepEnabled         }));       } catch (err) {         // Ignore storage write errors       }     }      /**      * ======================================================================== =      * TIMELINE STEP BUILDER      * ======================================================================== =      * Expands a day's exercises into sequential steps:      * - Optional 5s 'PREP' step at the very beginning      * - 'WORK' step for each interval      * - 'INTERVAL_REST' step between intervals of the same exercise (if intervals > 1)      * - 'TRANSITION_REST' (15s) after the final interval of exercise i before exercise i+1      */     function buildWorkoutSteps(dayNum, includePrep = true) {       const plan = WORKOUT_PLANS[dayNum];       const steps = [];       const exercises = plan.exercises;        if (includePrep && exercises.length > 0) {         const firstEx = exercises[0];         steps.push({           type: 'PREP',           exerciseIndex: 0,           exerciseName: firstEx.name,           category: firstEx.category,           intervalNum: 1,           totalIntervals: firstEx.intervals,           duration: INITIAL_PREP_SECONDS,           nextExerciseName: firstEx.name         });       }        exercises.forEach((ex, exIdx) => {         for (let interval = 1; interval <= ex.intervals; interval++) {           // 1. Work interval           steps.push({             type: 'WORK',             exerciseIndex: exIdx,             exerciseName: ex.name,             category: ex.category,             note: ex.note || '',             intervalNum: interval,             totalIntervals: ex.intervals,             duration: ex.work,             workDuration: ex.work,             restDuration: ex.rest           });            // 2. Rest between intervals of the same exercise           if (interval < ex.intervals && ex.rest > 0) {             steps.push({               type: 'INTERVAL_REST',               exerciseIndex: exIdx,               exerciseName: ex.name,               category: ex.category,               intervalNum: interval,               nextIntervalNum: interval + 1,               totalIntervals: ex.intervals,               duration: ex.rest             });           }         }          // 3. 15-second transition rest between distinct exercises         if (exIdx < exercises.length - 1) {           const nextEx = exercises[exIdx + 1];           steps.push({             type: 'TRANSITION_REST',             exerciseIndex: exIdx,             nextExerciseIndex: exIdx + 1,             exerciseName: nextEx.name,             previousExerciseName: ex.name,             category: nextEx.category,             intervalNum: 1,             totalIntervals: nextEx.intervals,             duration: TRANSITION_REST_SECONDS           });         }       });        return steps;     }      /**      * ======================================================================== =      * WEB AUDIO SYNTHESIZER & SPEECH ENGINE      * ======================================================================== =      */     let audioCtx = null;     let keepAliveOsc = null;     let preferredVoice = null;      function initSpeechVoice() {       if (!('speechSynthesis' in window)) return;       const pickVoice = () => {         const voices = window.speechSynthesis.getVoices();         if (!voices || voices.length === 0) return;         // Prefer crisp English voices         preferredVoice =           voices.find(v => /en[-_](US|GB|AU)/i.test(v.lang) && /(Google|Samantha|Daniel|Alex|Natural|Enhanced)/i.test(v.name)) ||           voices.find(v => /^en/i.test(v.lang)) ||           voices[0];       };       pickVoice();       window.speechSynthesis.onvoiceschanged = pickVoice;     }      /**      * Unlocks AudioContext & SpeechSynthesis on first user interaction      * so mobile browsers (iOS Safari, Android Chrome) permit playback.      */     function unlockAudioAndSpeech() {       try {         const AudioContextClass = window.AudioContext || window.webkitAudioContext;         if (AudioContextClass) {           if (!audioCtx) {             audioCtx = new AudioContextClass();           }           if (audioCtx.state === 'suspended') {             audioCtx.resume();           }           // Play a 1ms silent buffer to guarantee iOS audio unlock           const buffer = audioCtx.createBuffer(1, 1, 22050);           const source = audioCtx.createBufferSource();           source.buffer = buffer;           source.connect(audioCtx.destination);           source.start(0);         }       } catch (e) {         // Ignore audio context error if restricted       }        try {         if ('speechSynthesis' in window) {           // Prime speech engine with an empty utterance if needed           if (window.speechSynthesis.paused) {             window.speechSynthesis.resume();           }         }       } catch (e) {         // Ignore speech synthesis prime errors       }     }      /**      * Plays synthesized Web Audio tones for phase cues & 3-2-1 ticks      */     function playToneCue(cueType) {       if (!state.beepsEnabled) return;       unlockAudioAndSpeech();       if (!audioCtx) return;        const now = audioCtx.currentTime;        const playNote = (freq, startTime, duration, type = 'sine', peakGain = 0.22) => {         const osc = audioCtx.createOscillator();         const gain = audioCtx.createGain();         osc.type = type;         osc.frequency.setValueAtTime(freq, startTime);          gain.gain.setValueAtTime(0.0001, startTime);         gain.gain.exponentialRampToValueAtTime(peakGain, startTime + 0.015);         gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);          osc.connect(gain);         gain.connect(audioCtx.destination);         osc.start(startTime);         osc.stop(startTime + duration + 0.02);       };        switch (cueType) {         case 'PREP':           playNote(523.25, now, 0.16, 'sine', 0.18);        // C5           playNote(659.25, now + 0.14, 0.22, 'sine', 0.20); // E5           break;         case 'WORK':           // Bright, motivating rising triad (E5 -> G#5/G5 -> C6)           playNote(523.25, now, 0.14, 'triangle', 0.24);        // C5           playNote(659.25, now + 0.11, 0.14, 'triangle', 0.24); // E5           playNote(783.99, now + 0.22, 0.28, 'triangle', 0.28); // G5           break;         case 'INTERVAL_REST':           // Calm descending two-tone chime           playNote(659.25, now, 0.16, 'sine', 0.20);        // E5           playNote(523.25, now + 0.15, 0.26, 'sine', 0.20); // C5           break;         case 'TRANSITION_REST':           // Distinct 3-note transition alert           playNote(587.33, now, 0.14, 'sine', 0.20);        // D5           playNote(493.88, now + 0.13, 0.14, 'sine', 0.20); // B4           playNote(440.00, now + 0.26, 0.28, 'sine', 0.22); // A4           break;         case 'TICK':           // Subtle crisp countdown pip for 3, 2           playNote(440.00, now, 0.09, 'sine', 0.16);           break;         case 'TICK_FINAL':           // Slightly brighter pip for 1           playNote(587.33, now, 0.11, 'sine', 0.20);           break;         case 'COMPLETE':           // Celebratory major chord arpeggio           playNote(523.25, now, 0.18, 'triangle', 0.24);           playNote(659.25, now + 0.14, 0.18, 'triangle', 0.24);           playNote(783.99, now + 0.28, 0.18, 'triangle', 0.24);           playNote(1046.50, now + 0.42, 0.45, 'triangle', 0.28);           break;       }     }      /**      * Speaks a phrase using the Web Speech API      */     function speakText(text, interrupt = true) {       if (!state.voiceEnabled) return;       if (!('speechSynthesis' in window)) return;        try {         if (interrupt) {           window.speechSynthesis.cancel();         }         const utterance = new SpeechSynthesisUtterance(text);         if (preferredVoice) utterance.voice = preferredVoice;         utterance.rate = 1.02;         utterance.pitch = 1.0;         utterance.volume = 1.0;         window.speechSynthesis.speak(utterance);       } catch (err) {         // Ignore speech synthesis errors       }     }      /**      * Announces a step transition via both tone chime and spoken cue      */     function announceStep(step) {       if (!step) return;       playToneCue(step.type);        let spokenMessage = '';       if (step.type === 'PREP') {         spokenMessage = `Get ready: ${step.exerciseName}`;       } else if (step.type === 'WORK') {         const durationText = step.duration === 60 ? '60 seconds' : `${step.duration} seconds`;         if (step.totalIntervals > 1) {           spokenMessage = `Work: ${step.exerciseName}, interval ${step.intervalNum} of ${step.totalIntervals}, ${durationText}`;         } else {           spokenMessage = `Work: ${step.exerciseName}, ${durationText}`;         }       } else if (step.type === 'INTERVAL_REST') {         spokenMessage = `Rest, ${step.duration} seconds`;       } else if (step.type === 'TRANSITION_REST') {         spokenMessage = `15 seconds rest. Next exercise: ${step.exerciseName}`;       }        if (spokenMessage) {         speakText(spokenMessage, true);       }     }      /**      * ======================================================================== =      * SCREEN WAKE LOCK API + SILENT AUDIO FALLBACK      * ======================================================================== =      */     function startSilentKeepAliveFallback() {       try {         unlockAudioAndSpeech();         if (!audioCtx || keepAliveOsc) return;         const osc = audioCtx.createOscillator();         const gain = audioCtx.createGain();         osc.frequency.value = 30; // Low sub-audible frequency         gain.gain.value = 0.00001; // Effectively silent         osc.connect(gain);         gain.connect(audioCtx.destination);         osc.start();         keepAliveOsc = { osc, gain };       } catch (e) {         // Ignore fallback error       }     }      function stopSilentKeepAliveFallback() {       if (keepAliveOsc) {         try {           keepAliveOsc.osc.stop();           keepAliveOsc.osc.disconnect();           keepAliveOsc.gain.disconnect();         } catch (e) {}         keepAliveOsc = null;       }     }      async function requestScreenWakeLock() {       if (!state.isRunning) return;        if ('wakeLock' in navigator) {         try {           if (state.wakeLockSentinel) {             await state.wakeLockSentinel.release();             state.wakeLockSentinel = null;           }           const sentinel = await navigator.wakeLock.request('screen');           state.wakeLockSentinel = sentinel;           state.wakeLockActive = true;           state.wakeLockMode = 'native';            sentinel.addEventListener('release', () => {             state.wakeLockSentinel = null;             if (!state.isRunning) {               state.wakeLockActive = false;               state.wakeLockMode = 'standby';               updateWakeLockUI();             }           });            updateWakeLockUI();           return;         } catch (err) {           // Permissions policy or low battery blocked native wakeLock; use fallback         }       }        // Fallback keep-awake loop       startSilentKeepAliveFallback();       state.wakeLockActive = true;       state.wakeLockMode = 'fallback';       updateWakeLockUI();     }      async function releaseScreenWakeLock() {       stopSilentKeepAliveFallback();       if (state.wakeLockSentinel) {         try {           await state.wakeLockSentinel.release();         } catch (err) {}         state.wakeLockSentinel = null;       }       state.wakeLockActive = false;       state.wakeLockMode = 'standby';       updateWakeLockUI();     }      // Re-acquire wake lock if page returns to visibility while timer is running     document.addEventListener('visibilitychange', () => {       if (document.visibilityState === 'visible' && state.isRunning) {         requestScreenWakeLock();       }     });      function updateWakeLockUI() {       const pill = document.getElementById('wake-lock-pill');       const dot = document.getElementById('wake-lock-dot');       const text = document.getElementById('wake-lock-text');        if (state.wakeLockActive) {         pill.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-300 bg-emerald-950/70 border-emerald-500/40 text-emerald-300 shrink-0';         dot.className = 'w-2 h-2 rounded-full bg-emerald-400 wake-dot-active';         text.textContent = 'Screen Awake: ON';       } else {         pill.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-300 bg-slate-900/90 border-slate-700/80 text-slate-400 shrink-0';         dot.className = 'w-2 h-2 rounded-full bg-slate-500';         text.textContent = 'Screen Awake: Standby';       }     }      /**      * ======================================================================== =      * FORMATTING & DURATION HELPERS      * ======================================================================== =      */     function formatSecondsMMSS(totalSec) {       const clamped = Math.max(0, Math.ceil(totalSec));       const mins = Math.floor(clamped / 60);       const secs = clamped % 60;       return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;     }      function calculateDayTotalSeconds(dayNum, includePrep = false) {       const steps = buildWorkoutSteps(dayNum, includePrep);       return steps.reduce((acc, s) => acc + s.duration, 0);     }      function calculateRemainingWorkoutSeconds() {       if (state.isCompleted || state.steps.length === 0) return 0;       let total = Math.ceil(state.remainingMs / 1000);       for (let i = state.currentStepIndex + 1; i < state.steps.length; i++) {         total += state.steps[i].duration;       }       return total;     }      /**      * ======================================================================== =      * TOAST FEEDBACK (NON-BLOCKING)      * ======================================================================== =      */     function showToast(message) {       const container = document.getElementById('toast-container');       const toast = document.createElement('div');       toast.className = 'px-4 py-2.5 rounded-xl bg-slate-900/95 border border-slate-700 text-slate-100 text-xs sm:text-sm font-semibold shadow-2xl backdrop-blur-md transition-all duration-300 opacity-0 translate-y-2';       toast.textContent = message;       container.appendChild(toast);        requestAnimationFrame(() => {         toast.classList.remove('opacity-0', 'translate-y-2');       });        setTimeout(() => {         toast.classList.add('opacity-0', 'translate-y-2');         setTimeout(() => toast.remove(), 300);       }, 2400);     }      /**      * ======================================================================== =      * TIMER ENGINE & STEP NAVIGATION      * ======================================================================== =      */     function selectDay(dayNum, autoReset = true) {       if (state.isRunning) {         pauseTimer(false);       }       state.selectedDay = dayNum;       savePreferences();       if (autoReset) {         resetWorkout(false);       }     }      function resetWorkout(announceToast = true) {       pauseTimer(false);       state.isCompleted = false;       state.steps = buildWorkoutSteps(state.selectedDay, state.prepEnabled);       state.currentStepIndex = 0;       state.remainingMs = state.steps.length > 0 ? state.steps[0].duration * 1000 : 0;       state.lastAnnouncedSecond = null;        if ('speechSynthesis' in window) {         try { window.speechSynthesis.cancel(); } catch (e) {}       }        renderAll();       if (announceToast) {         showToast(`Day ${state.selectedDay} timer reset`);       }     }      function startTimer() {       unlockAudioAndSpeech();        // If workout already completed, restart from beginning       if (state.isCompleted) {         state.isCompleted = false;         state.steps = buildWorkoutSteps(state.selectedDay, state.prepEnabled);         state.currentStepIndex = 0;         state.remainingMs = state.steps[0].duration * 1000;         state.lastAnnouncedSecond = null;       }        if (state.isRunning || state.steps.length === 0) return;        const currentStep = state.steps[state.currentStepIndex];       const isFreshStepStart = Math.abs(state.remainingMs - currentStep.duration * 1000) < 50;        state.isRunning = true;       state.lastFrameTime = performance.now();       requestScreenWakeLock();        if (isFreshStepStart) {         state.lastAnnouncedSecond = currentStep.duration;         announceStep(currentStep);       } else {         playToneCue('TICK_FINAL');       }        renderControls();       state.rafId = requestAnimationFrame(timerTickLoop);     }      function pauseTimer(speakPause = false) {       state.isRunning = false;       state.lastFrameTime = null;       if (state.rafId) {         cancelAnimationFrame(state.rafId);         state.rafId = null;       }       releaseScreenWakeLock();       renderControls();       if (speakPause) {         showToast('Timer paused');       }     }      function toggleStartPause() {       if (state.isRunning) {         pauseTimer(true);       } else {         startTimer();       }     }      function advanceToStep(newIndex, shouldAnnounce = true) {       if (newIndex < 0) newIndex = 0;        if (newIndex >= state.steps.length) {         // Workout finished!         state.isCompleted = true;         state.isRunning = false;         state.remainingMs = 0;         if (state.rafId) {           cancelAnimationFrame(state.rafId);           state.rafId = null;         }         releaseScreenWakeLock();         playToneCue('COMPLETE');         speakText('Workout complete! Great job.', true);         renderAll();         return;       }        state.isCompleted = false;       state.currentStepIndex = newIndex;       const step = state.steps[newIndex];       state.remainingMs = step.duration * 1000;       state.lastAnnouncedSecond = step.duration;        if (state.isRunning && shouldAnnounce) {         announceStep(step);       }       renderAll();     }      function stepPrevious() {       unlockAudioAndSpeech();       if (state.isCompleted) {         advanceToStep(state.steps.length - 1, state.isRunning);         return;       }       const currentStep = state.steps[state.currentStepIndex];       const elapsedSec = currentStep ? (currentStep.duration - state.remainingMs / 1000) : 0;        // If more than 2.5 seconds into current step, restart current step; otherwise go to prior step       if (elapsedSec > 2.5 || state.currentStepIndex === 0) {         advanceToStep(state.currentStepIndex, state.isRunning);       } else {         advanceToStep(state.currentStepIndex - 1, state.isRunning);       }     }      function stepSkip() {       unlockAudioAndSpeech();       if (state.isCompleted) return;       advanceToStep(state.currentStepIndex + 1, state.isRunning);     }      function jumpToExercise(exerciseIndex) {       unlockAudioAndSpeech();       const targetIdx = state.steps.findIndex(         s => s.type === 'WORK' && s.exerciseIndex === exerciseIndex && s.intervalNum === 1       );       if (targetIdx !== -1) {         advanceToStep(targetIdx, state.isRunning);         const exName = WORKOUT_PLANS[state.selectedDay].exercises[exerciseIndex].name;         showToast(`Jumped to: ${exName}`);       }     }      /**      * High-precision 60fps animation frame loop using real wall-clock delta      */     function timerTickLoop(now) {       if (!state.isRunning) return;        if (state.lastFrameTime !== null) {         const deltaMs = now - state.lastFrameTime;         state.remainingMs -= deltaMs;       }       state.lastFrameTime = now;        if (state.remainingMs <= 0) {         // Transition cleanly to next step         advanceToStep(state.currentStepIndex + 1, true);         if (state.isRunning) {           state.lastFrameTime = performance.now();           state.rafId = requestAnimationFrame(timerTickLoop);         }         return;       }        // Check integer second boundary for 3, 2, 1 cues       const currentWholeSec = Math.ceil(state.remainingMs / 1000);       if (currentWholeSec !== state.lastAnnouncedSecond) {         state.lastAnnouncedSecond = currentWholeSec;          if (currentWholeSec === 3 || currentWholeSec === 2 || currentWholeSec === 1) {           playToneCue(currentWholeSec === 1 ? 'TICK_FINAL' : 'TICK');           if (state.spokenCountdownEnabled && state.voiceEnabled) {             speakText(String(currentWholeSec), true);           }         }       }        updateTimerVisualsFast();       state.rafId = requestAnimationFrame(timerTickLoop);     }      /**      * ======================================================================== =      * UI RENDERING FUNCTIONS      * ======================================================================== =      */     const RING_CIRCUMFERENCE = 2 * Math.PI * 112; // r = 112 -> ~703.7168      function getPhaseTheme(step, isCompleted) {       if (isCompleted) {         return {           badgeText: 'COMPLETED',           badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',           dotClass: 'bg-emerald-400',           ringStroke: '#10b981',           glowClass: 'bg-emerald-500',           helper: 'Protocol Complete'         };       }       if (!step) {         return {           badgeText: 'READY',           badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',           dotClass: 'bg-emerald-400',           ringStroke: '#10b981',           glowClass: 'bg-emerald-500',           helper: 'Press Start'         };       }       switch (step.type) {         case 'PREP':           return {             badgeText: 'GET READY',             badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/35',             dotClass: 'bg-amber-400',             ringStroke: '#f59e0b',             glowClass: 'bg-amber-500',             helper: state.isRunning ? 'Prepare Position' : 'Paused — Get Ready'           };         case 'WORK':           return {             badgeText: 'WORK',             badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',             dotClass: 'bg-emerald-400',             ringStroke: '#10b981',             glowClass: 'bg-emerald-500',             helper: state.isRunning ? 'Active Hold / Movement' : 'Paused — Work'           };         case 'INTERVAL_REST':           return {             badgeText: 'INTERVAL REST',             badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40',             dotClass: 'bg-sky-400',             ringStroke: '#38bdf8',             glowClass: 'bg-sky-500',             helper: state.isRunning ? 'Recover & Breathe' : 'Paused — Interval Rest'           };         case 'TRANSITION_REST':           return {             badgeText: 'NEXT EXERCISE REST',             badgeClass: 'bg-violet-500/20 text-violet-300 border-violet-500/40',             dotClass: 'bg-violet-400',             ringStroke: '#a78bfa',             glowClass: 'bg-violet-500',             helper: state.isRunning ? 'Transition & Setup' : 'Paused — Transition'           };         default:           return {             badgeText: 'READY',             badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',             dotClass: 'bg-emerald-400',             ringStroke: '#10b981',             glowClass: 'bg-emerald-500',             helper: 'Ready'           };       }     }      /**      * Fast 60fps update for smooth SVG ring + MM:SS text without DOM thrashing      */     function updateTimerVisualsFast() {       const countdownEl = document.getElementById('countdown-display');       const ringEl = document.getElementById('progress-ring');       const totalRemEl = document.getElementById('total-remaining-time');        if (state.isCompleted) {         countdownEl.textContent = '00:00';         ringEl.style.strokeDashoffset = '0';         totalRemEl.textContent = '00:00';         return;       }        const step = state.steps[state.currentStepIndex];       if (!step) return;        const displaySec = Math.ceil(state.remainingMs / 1000);       countdownEl.textContent = formatSecondsMMSS(displaySec);        const totalStepMs = step.duration * 1000;       const fractionRemaining = Math.max(0, Math.min(1, state.remainingMs / totalStepMs));       const offset = RING_CIRCUMFERENCE * (1 - fractionRemaining);       ringEl.style.strokeDashoffset = offset.toFixed(2);        totalRemEl.textContent = formatSecondsMMSS(calculateRemainingWorkoutSeconds());     }      function renderDayTabs() {       document.querySelectorAll('.day-tab-btn').forEach(btn => {         const day = Number(btn.dataset.day);         const totalSec = calculateDayTotalSeconds(day, state.prepEnabled);         const metaEl = document.getElementById(`day-${day}-meta`);         if (metaEl) {           metaEl.textContent = `8 ex • ${formatSecondsMMSS(totalSec)}`;         }          if (day === state.selectedDay) {           btn.className = 'day-tab-btn py-2.5 px-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-950/50';         } else {           btn.className = 'day-tab-btn py-2.5 px-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer bg-transparent text-slate-300 hover:bg-slate-800/70';         }       });     }      function renderTimerCard() {       const step = state.steps[state.currentStepIndex];       const theme = getPhaseTheme(step, state.isCompleted);       const plan = WORKOUT_PLANS[state.selectedDay];        // Phase badge & glow       const badge = document.getElementById('phase-badge');       const badgeDot = document.getElementById('phase-badge-dot');       const badgeText = document.getElementById('phase-badge-text');       const ringEl = document.getElementById('progress-ring');       const glowEl = document.getElementById('phase-ambient-glow');       const helperEl = document.getElementById('phase-helper-label');        badge.className = `inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs sm:text-sm font-extrabold tracking-wider uppercase border ${theme.badgeClass}`;       badgeDot.className = `w-2 h-2 rounded-full ${theme.dotClass}`;       badgeText.textContent = theme.badgeText;       ringEl.setAttribute('stroke', theme.ringStroke);       glowEl.className = `pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full blur-3xl opacity-20 transition-colors duration-500 ${theme.glowClass}`;       helperEl.textContent = theme.helper;        const intervalPill = document.getElementById('interval-pill');       const catTag = document.getElementById('current-category-tag');       const titleEl = document.getElementById('current-exercise-title');       const subtitleEl = document.getElementById('current-exercise-subtitle');       const upNextTitle = document.getElementById('up-next-title');       const upNextDuration = document.getElementById('up-next-duration');        if (state.isCompleted) {         intervalPill.textContent = 'All Done';         catTag.textContent = `Day ${state.selectedDay} Completed`;         titleEl.textContent = 'Workout Complete!';         subtitleEl.textContent = 'Great job finishing your Protocol 211 session.';         upNextTitle.textContent = 'Session Finished — Tap Reset to repeat';         upNextDuration.textContent = 'DONE';         updateTimerVisualsFast();         return;       }        if (!step) return;        const exIdx = step.type === 'TRANSITION_REST' ? step.nextExerciseIndex : step.exerciseIndex;       const exObj = plan.exercises[exIdx];        if (step.type === 'PREP') {         intervalPill.textContent = 'Starting Soon';         catTag.textContent = `First Up • ${step.category}`;         titleEl.textContent = step.exerciseName;         subtitleEl.textContent = `Exercise 1 of ${plan.exercises.length} • ${exObj.work}s work${exObj.intervals > 1 ? ` × ${exObj.intervals} intervals` : ''}`;       } else if (step.type === 'WORK') {         intervalPill.textContent = `Interval ${step.intervalNum} of ${step.totalIntervals}`;         catTag.textContent = step.category;         titleEl.textContent = step.exerciseName;         const restInfo = exObj.intervals > 1 ? ` / ${exObj.rest}s rest` : ' (1 interval)';         const noteInfo = exObj.note ? ` • ${exObj.note}` : '';         subtitleEl.textContent = `Exercise ${exIdx + 1} of ${plan.exercises.length} • ${exObj.work}s work${restInfo}${noteInfo}`;       } else if (step.type === 'INTERVAL_REST') {         intervalPill.textContent = `Next: Interval ${step.nextIntervalNum} of ${step.totalIntervals}`;         catTag.textContent = `Rest Between Intervals • ${step.category}`;         titleEl.textContent = step.exerciseName;         subtitleEl.textContent = `Exercise ${exIdx + 1} of ${plan.exercises.length} • Prepare for interval ${step.nextIntervalNum}`;       } else if (step.type === 'TRANSITION_REST') {         intervalPill.textContent = '15s Transition';         catTag.textContent = `Up Next • ${step.category}`;         titleEl.textContent = `Next: ${step.exerciseName}`;         subtitleEl.textContent = `Exercise ${exIdx + 1} of ${plan.exercises.length} • ${exObj.work}s work${exObj.intervals > 1 ? ` × ${exObj.intervals} intervals` : ''}`;       }        // Populate Up Next Preview Card       const nextStep = state.steps[state.currentStepIndex + 1];       if (!nextStep) {         upNextTitle.textContent = 'Workout Complete!';         upNextDuration.textContent = 'FINISH';       } else {         if (nextStep.type === 'WORK') {           const intLabel = nextStep.totalIntervals > 1 ? ` (Interval ${nextStep.intervalNum}/${nextStep.totalIntervals})` : '';           upNextTitle.textContent = `Work: ${nextStep.exerciseName}${intLabel}`;         } else if (nextStep.type === 'INTERVAL_REST') {           upNextTitle.textContent = `Interval Rest (${nextStep.exerciseName})`;         } else if (nextStep.type === 'TRANSITION_REST') {           upNextTitle.textContent = `15s Rest → ${nextStep.exerciseName}`;         }         upNextDuration.textContent = formatSecondsMMSS(nextStep.duration);       }        updateTimerVisualsFast();     }      function renderControls() {       const btn = document.getElementById('btn-start-pause');       const iconPlay = document.getElementById('icon-play');       const iconPause = document.getElementById('icon-pause');       const label = document.getElementById('btn-start-pause-label');        if (state.isRunning) {         btn.className = 'col-span-6 sm:col-span-6 min-h-[54px] rounded-2xl bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold text-base sm:text-lg shadow-lg shadow-amber-950/50 flex items-center justify-center gap-2.5 transition-all cursor-pointer';         iconPlay.classList.add('hidden');         iconPause.classList.remove('hidden');         label.textContent = 'Pause';       } else {         btn.className = 'col-span-6 sm:col-span-6 min-h-[54px] rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-extrabold text-base sm:text-lg shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2.5 transition-all cursor-pointer';         iconPlay.classList.remove('hidden');         iconPause.classList.add('hidden');         if (state.isCompleted) {           label.textContent = 'Restart Day';         } else {           const step = state.steps[state.currentStepIndex];           const isUntouched = state.currentStepIndex === 0 && step && Math.abs(state.remainingMs - step.duration * 1000) < 50;           label.textContent = isUntouched ? 'Start Workout' : 'Resume';         }       }     }      function renderToggles() {       const configs = [         { id: 'toggle-voice', stateId: 'toggle-voice-state', enabled: state.voiceEnabled },         { id: 'toggle-beeps', stateId: 'toggle-beeps-state', enabled: state.beepsEnabled },         { id: 'toggle-spoken-countdown', stateId: 'toggle-spoken-countdown-state', enabled: state.spokenCountdownEnabled },         { id: 'toggle-prep', stateId: 'toggle-prep-state', enabled: state.prepEnabled }       ];        configs.forEach(({ id, stateId, enabled }) => {         const btn = document.getElementById(id);         const stateText = document.getElementById(stateId);         const indicator = btn.querySelector('.toggle-indicator');         const knob = btn.querySelector('.toggle-knob');          btn.setAttribute('aria-checked', String(enabled));         if (enabled) {           btn.className = 'setting-toggle-btn p-2.5 rounded-xl border border-emerald-500/35 bg-emerald-950/20 text-left transition-all flex items-center justify-between gap-2 cursor-pointer';           stateText.textContent = 'ON';           stateText.className = 'text-[11px] font-semibold text-emerald-400';           indicator.className = 'toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-emerald-500 shrink-0';           knob.className = 'toggle-knob w-3.5 h-3.5 rounded-full bg-white shadow transition-transform translate-x-3.5';         } else {           btn.className = 'setting-toggle-btn p-2.5 rounded-xl border border-borderSubtle bg-obsidian/60 text-left transition-all flex items-center justify-between gap-2 cursor-pointer';           stateText.textContent = 'OFF';           stateText.className = 'text-[11px] font-semibold text-slate-500';           indicator.className = 'toggle-indicator w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center bg-slate-700 shrink-0';           knob.className = 'toggle-knob w-3.5 h-3.5 rounded-full bg-slate-300 shadow transition-transform translate-x-0';         }       });     }      function renderExerciseSchedule() {       const plan = WORKOUT_PLANS[state.selectedDay];       const heading = document.getElementById('schedule-heading');       const totalDurEl = document.getElementById('schedule-total-duration');       const listContainer = document.getElementById('exercise-list-container');        const totalSec = calculateDayTotalSeconds(state.selectedDay, state.prepEnabled);       heading.textContent = `${plan.label} Protocol Schedule`;       totalDurEl.textContent = `Total: ${formatSecondsMMSS(totalSec)}`;        const currentStep = state.steps[state.currentStepIndex];       const activeExIdx = state.isCompleted         ? plan.exercises.length         : currentStep           ? (currentStep.type === 'TRANSITION_REST' ? currentStep.nextExerciseIndex : currentStep.exerciseIndex)           : 0;        listContainer.innerHTML = '';        plan.exercises.forEach((ex, idx) => {         const isDone = state.isCompleted || idx < activeExIdx;         const isCurrent = !state.isCompleted && idx === activeExIdx;          // Category pill styling         let catBadgeClass = 'bg-slate-800 text-slate-300 border-slate-700';         if (ex.category === 'Stretch') {           catBadgeClass = 'bg-sky-950/70 text-sky-300 border-sky-700/50';         } else if (ex.category === 'Nerve Glide') {           catBadgeClass = 'bg-amber-950/70 text-amber-300 border-amber-700/50';         } else {           catBadgeClass = 'bg-emerald-950/70 text-emerald-300 border-emerald-700/50';         }          // Card container         const card = document.createElement('button');         card.type = 'button';         card.onclick = () => jumpToExercise(idx);          if (isCurrent) {           card.className = 'w-full text-left p-3.5 rounded-2xl border-2 border-emerald-500/80 bg-emerald-950/20 shadow-lg shadow-emerald-950/30 transition-all flex items-center justify-between gap-3 cursor-pointer';         } else if (isDone) {           card.className = 'w-full text-left p-3.5 rounded-2xl border border-borderSubtle/70 bg-obsidian/50 opacity-75 hover:opacity-100 transition-all flex items-center justify-between gap-3 cursor-pointer';         } else {           card.className = 'w-full text-left p-3.5 rounded-2xl border border-borderSubtle bg-card/70 hover:bg-card hover:border-slate-600 transition-all flex items-center justify-between gap-3 cursor-pointer';         }          // Left side: Status badge + title + details         const leftDiv = document.createElement('div');         leftDiv.className = 'flex items-start sm:items-center gap-3 min-w-0';          const numCircle = document.createElement('div');         if (isDone) {           numCircle.className = 'w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0';           numCircle.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`;         } else if (isCurrent) {           numCircle.className = 'w-8 h-8 rounded-xl bg-emerald-500 text-slate-950 font-extrabold text-sm flex items-center justify-center shrink-0 mt-0.5 sm:mt-0';           numCircle.textContent = String(idx + 1);         } else {           numCircle.className = 'w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-sm flex items-center justify-center shrink-0 mt-0.5 sm:mt-0';           numCircle.textContent = String(idx + 1);         }          const textWrap = document.createElement('div');         textWrap.className = 'min-w-0';          const topRow = document.createElement('div');         topRow.className = 'flex flex-wrap items-center gap-2';          const nameSpan = document.createElement('span');         nameSpan.className = `text-sm sm:text-base font-bold truncate ${isCurrent ? 'text-white' : 'text-slate-100'}`;         nameSpan.textContent = ex.name;          const catSpan = document.createElement('span');         catSpan.className = `px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${catBadgeClass}`;         catSpan.textContent = ex.category;          topRow.appendChild(nameSpan);         topRow.appendChild(catSpan);          const subRow = document.createElement('div');         subRow.className = 'text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium';         const restDesc = ex.intervals > 1 ? ` &bull; ${ex.rest}s rest` : '';         const intDesc = `${ex.intervals} ${ex.intervals === 1 ? 'interval' : 'intervals'}`;         const noteDesc = ex.note ? ` &bull; <span class="text-sky-300">${ex.note}</span>` : '';         subRow.innerHTML = `<span class="text-slate-200 font-semibold">${ex.work}s work</span>${restDesc} &bull; <span>${intDesc}</span>${noteDesc}`;          textWrap.appendChild(topRow);         textWrap.appendChild(subRow);         leftDiv.appendChild(numCircle);         leftDiv.appendChild(textWrap);          // Right side: Total exercise block time         const exBlockSec = ex.work * ex.intervals + (ex.intervals > 1 ? ex.rest * (ex.intervals - 1) : 0);         const rightBadge = document.createElement('div');         rightBadge.className = 'text-right shrink-0';         rightBadge.innerHTML = `           <div class="text-xs sm:text-sm font-mono font-bold ${isCurrent ? 'text-emerald-300' : 'text-slate-300'}">${formatSecondsMMSS(exBlockSec)}</div>           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">${isCurrent ? 'Active' : isDone ? 'Done' : 'Jump'}</div>         `;          card.appendChild(leftDiv);         card.appendChild(rightBadge);         listContainer.appendChild(card);          // Visual 15s Transition Connector pill between exercises         if (idx < plan.exercises.length - 1) {           const isTransitionActive =             !state.isCompleted &&             currentStep &&             currentStep.type === 'TRANSITION_REST' &&             currentStep.exerciseIndex === idx;            const connector = document.createElement('div');           connector.className = `flex items-center justify-center gap-2 py-0.5 text-[11px] font-bold tracking-wider uppercase ${             isTransitionActive ? 'text-violet-300' : 'text-slate-500'           }`;           connector.innerHTML = `             <span class="h-px flex-1 ${isTransitionActive ? 'bg-violet-500/60' : 'bg-borderSubtle/60'}"></span>             <span class="px-2.5 py-0.5 rounded-full border ${               isTransitionActive                 ? 'bg-violet-950/80 border-violet-500/60 text-violet-200'                 : 'bg-obsidian/80 border-borderSubtle/80 text-slate-400'             }">15s Transition Rest</span>             <span class="h-px flex-1 ${isTransitionActive ? 'bg-violet-500/60' : 'bg-borderSubtle/60'}"></span>           `;           listContainer.appendChild(connector);         }       });     }      function renderAll() {       renderDayTabs();       renderTimerCard();       renderControls();       renderToggles();       renderExerciseSchedule();       updateWakeLockUI();     }      /**      * ======================================================================== =      * EVENT LISTENERS & INITIALIZATION      * ======================================================================== =      */     function bindEvents() {       // Day Tabs       document.querySelectorAll('.day-tab-btn').forEach(btn => {         btn.addEventListener('click', () => {           unlockAudioAndSpeech();           const day = Number(btn.dataset.day);           selectDay(day, true);         });       });        // Transport Buttons       document.getElementById('btn-start-pause').addEventListener('click', toggleStartPause);       document.getElementById('btn-prev').addEventListener('click', stepPrevious);       document.getElementById('btn-skip').addEventListener('click', stepSkip);       document.getElementById('btn-reset').addEventListener('click', () => {         unlockAudioAndSpeech();         resetWorkout(true);       });        // Test Voice & Sound Button       document.getElementById('btn-test-audio').addEventListener('click', () => {         unlockAudioAndSpeech();         // Force a sample chime & voice test regardless of mute states, then report state         const prevBeeps = state.beepsEnabled;         const prevVoice = state.voiceEnabled;         state.beepsEnabled = true;         state.voiceEnabled = true;         playToneCue('WORK');         speakText('Audio and voice alerts ready for Protocol 211.', true);         state.beepsEnabled = prevBeeps;         state.voiceEnabled = prevVoice;         showToast('Playing test chime & voice alert');       });        // Settings Toggles       document.getElementById('toggle-voice').addEventListener('click', () => {         unlockAudioAndSpeech();         state.voiceEnabled = !state.voiceEnabled;         if (!state.voiceEnabled && 'speechSynthesis' in window) {           try { window.speechSynthesis.cancel(); } catch (e) {}         }         savePreferences();         renderToggles();         showToast(`Voice cues ${state.voiceEnabled ? 'enabled' : 'muted'}`);       });        document.getElementById('toggle-beeps').addEventListener('click', () => {         unlockAudioAndSpeech();         state.beepsEnabled = !state.beepsEnabled;         if (state.beepsEnabled) playToneCue('TICK_FINAL');         savePreferences();         renderToggles();         showToast(`Alert beeps ${state.beepsEnabled ? 'enabled' : 'muted'}`);       });        document.getElementById('toggle-spoken-countdown').addEventListener('click', () => {         unlockAudioAndSpeech();         state.spokenCountdownEnabled = !state.spokenCountdownEnabled;         savePreferences();         renderToggles();         showToast(`Spoken 3-2-1 countdown ${state.spokenCountdownEnabled ? 'enabled' : 'muted'}`);       });        document.getElementById('toggle-prep').addEventListener('click', () => {         unlockAudioAndSpeech();         state.prepEnabled = !state.prepEnabled;         savePreferences();         if (!state.isRunning) {           resetWorkout(false);         } else {           renderToggles();         }         showToast(`5-second start prep ${state.prepEnabled ? 'enabled' : 'disabled'}`);       });        // Desktop Keyboard Shortcuts       document.addEventListener('keydown', (e) => {         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;         if (e.code === 'Space') {           e.preventDefault();           toggleStartPause();         } else if (e.code === 'ArrowRight') {           e.preventDefault();           stepSkip();         } else if (e.code === 'ArrowLeft') {           e.preventDefault();           stepPrevious();         }       });     }      // Boot Application     window.addEventListener('DOMContentLoaded', () => {       loadPreferences();       initSpeechVoice();       state.steps = buildWorkoutSteps(state.selectedDay, state.prepEnabled);       state.currentStepIndex = 0;       state.remainingMs = state.steps.length > 0 ? state.steps[0].duration * 1000 : 0;       bindEvents();       renderAll();     });   </script>
 </body>
+
 </html>
